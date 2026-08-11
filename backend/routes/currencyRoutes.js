@@ -1,0 +1,876 @@
+const express =
+  require('express');
+
+const Currency =
+  require('../models/Currency');
+
+const Product =
+  require('../models/Product');
+
+const protect =
+  require('../middleware/authMiddleware');
+
+const { computeCurrencyPrices } =
+  require('../utils/pricing');
+
+const router =
+  express.Router();
+
+/*
+ * Frankfurter provides ECB-based
+ * exchange rates and does not require
+ * an API key.
+ */
+
+const FX_BASE =
+  'https://api.frankfurter.app';
+
+const DEFAULT_CURRENCIES = [
+  {
+    code: 'INR',
+    name: 'Indian Rupee',
+    symbol: '₹',
+    decimalPlaces: 2
+  },
+
+  {
+    code: 'USD',
+    name: 'US Dollar',
+    symbol: '$',
+    decimalPlaces: 2
+  },
+
+  {
+    code: 'EUR',
+    name: 'Euro',
+    symbol: '€',
+    decimalPlaces: 2
+  },
+
+  {
+    code: 'GBP',
+    name: 'British Pound',
+    symbol: '£',
+    decimalPlaces: 2
+  },
+
+  {
+    code: 'AED',
+    name: 'UAE Dirham',
+    symbol: 'د.إ',
+    decimalPlaces: 2
+  },
+
+  {
+    code: 'CAD',
+    name: 'Canadian Dollar',
+    symbol: 'C$',
+    decimalPlaces: 2
+  },
+
+  {
+    code: 'AUD',
+    name: 'Australian Dollar',
+    symbol: 'A$',
+    decimalPlaces: 2
+  },
+
+  {
+    code: 'JPY',
+    name: 'Japanese Yen',
+    symbol: '¥',
+    decimalPlaces: 0
+  },
+
+  {
+    code: 'CHF',
+    name: 'Swiss Franc',
+    symbol: 'CHF',
+    decimalPlaces: 2
+  },
+
+  {
+    code: 'SGD',
+    name: 'Singapore Dollar',
+    symbol: 'S$',
+    decimalPlaces: 2
+  }
+];
+
+const ensureDefaultCurrencies =
+  async () => {
+    for (
+      const currency of
+        DEFAULT_CURRENCIES
+    ) {
+      await Currency.updateOne(
+        {
+          code:
+            currency.code
+        },
+
+        {
+          $setOnInsert: {
+            code:
+              currency.code,
+
+            name:
+              currency.name,
+
+            symbol:
+              currency.symbol,
+
+            decimalPlaces:
+              currency.decimalPlaces,
+
+            rateFromBase:
+              currency.code ===
+              'INR'
+                ? 1
+                : 0,
+
+            isActive:
+              true,
+
+            isBase:
+              currency.code ===
+              'INR',
+
+            rateSource:
+              currency.code ===
+              'INR'
+                ? 'base'
+                : 'pending'
+          }
+        },
+
+        {
+          upsert: true
+        }
+      );
+    }
+  };
+
+/*
+ * =========================================================
+ * GET /api/currencies
+ * =========================================================
+ */
+
+router.get(
+  '/',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      await ensureDefaultCurrencies();
+
+      const currencies =
+        await Currency.find({
+          isActive: true
+        })
+          .sort({
+            isBase: -1,
+            code: 1
+          })
+          .lean();
+
+      return res.json({
+        success: true,
+        currencies
+      });
+    } catch (error) {
+      console.error(
+        'Get currencies error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Unable to load currencies.'
+      });
+    }
+  }
+);
+
+/*
+ * =========================================================
+ * POST /api/currencies
+ * =========================================================
+ *
+ * Admin can create a custom currency.
+ */
+
+router.post(
+  '/',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        code,
+        name,
+        symbol = '',
+        decimalPlaces = 2,
+        rateFromBase = 0
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          code || ''
+        )
+          .trim()
+          .toUpperCase();
+
+      if (
+        !normalizedCode
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Currency code is required.'
+        });
+      }
+
+      if (
+        normalizedCode.length !==
+        3
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Currency code must contain 3 characters.'
+        });
+      }
+
+      if (
+        !String(
+          name || ''
+        ).trim()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Currency name is required.'
+        });
+      }
+
+      const rate =
+        Number(
+          rateFromBase
+        );
+
+      if (
+        normalizedCode !==
+          'INR' &&
+        (
+          !Number.isFinite(rate) ||
+          rate <= 0
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'A valid FX rate is required.'
+        });
+      }
+
+      const currency =
+        await Currency.findOneAndUpdate(
+          {
+            code:
+              normalizedCode
+          },
+
+          {
+            $set: {
+              name:
+                String(
+                  name
+                ).trim(),
+
+              symbol:
+                String(
+                  symbol
+                ),
+
+              decimalPlaces:
+                Math.max(
+                  0,
+                  Math.min(
+                    6,
+                    Number(
+                      decimalPlaces
+                    ) || 2
+                  )
+                ),
+
+              rateFromBase:
+                normalizedCode ===
+                'INR'
+                  ? 1
+                  : rate,
+
+              isActive:
+                true
+            },
+
+            $setOnInsert: {
+              isBase:
+                normalizedCode ===
+                'INR',
+
+              rateSource:
+                'manual'
+            }
+          },
+
+          {
+            upsert: true,
+            new: true
+          }
+        );
+
+      return res.status(201).json({
+        success: true,
+        currency
+      });
+    } catch (error) {
+      console.error(
+        'Create currency error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Unable to create currency.'
+      });
+    }
+  }
+);
+
+/*
+ * =========================================================
+ * PUT /api/currencies/:code
+ * =========================================================
+ */
+
+router.put(
+  '/:code',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const code =
+        String(
+          req.params.code
+        )
+          .trim()
+          .toUpperCase();
+
+      const {
+        name,
+        symbol,
+        decimalPlaces,
+        rateFromBase,
+        isActive
+      } = req.body;
+
+      const update = {};
+
+      if (
+        name !==
+        undefined
+      ) {
+        update.name =
+          String(
+            name
+          ).trim();
+      }
+
+      if (
+        symbol !==
+        undefined
+      ) {
+        update.symbol =
+          String(
+            symbol
+          );
+      }
+
+      if (
+        decimalPlaces !==
+        undefined
+      ) {
+        update.decimalPlaces =
+          Math.max(
+            0,
+            Math.min(
+              6,
+              Number(
+                decimalPlaces
+              ) || 2
+            )
+          );
+      }
+
+      if (
+        rateFromBase !==
+        undefined
+      ) {
+        const rate =
+          Number(
+            rateFromBase
+          );
+
+        if (
+          code !==
+            'INR' &&
+          (
+            !Number.isFinite(
+              rate
+            ) ||
+            rate <= 0
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Invalid FX rate.'
+          });
+        }
+
+        update.rateFromBase =
+          code ===
+          'INR'
+            ? 1
+            : rate;
+
+        update.rateSource =
+          'manual';
+
+        update.lastRateUpdatedAt =
+          new Date();
+      }
+
+      if (
+        isActive !==
+        undefined
+      ) {
+        update.isActive =
+          Boolean(
+            isActive
+          );
+      }
+
+      if (
+        code ===
+        'INR'
+      ) {
+        update.rateFromBase =
+          1;
+
+        update.isBase =
+          true;
+      }
+
+      const currency =
+        await Currency.findOneAndUpdate(
+          {
+            code
+          },
+
+          {
+            $set:
+              update
+          },
+
+          {
+            new: true
+          }
+        );
+
+      if (!currency) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Currency not found.'
+        });
+      }
+
+      return res.json({
+        success: true,
+        currency
+      });
+    } catch (error) {
+      console.error(
+        'Update currency error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Unable to update currency.'
+      });
+    }
+  }
+);
+
+/*
+ * =========================================================
+ * POST /api/currencies/sync-rates
+ * =========================================================
+ *
+ * Base currency = INR.
+ *
+ * Frankfurter uses EUR as its
+ * reference currency, therefore:
+ *
+ * INR → EUR
+ * EUR → requested currency
+ *
+ * is combined to get:
+ *
+ * INR → requested currency
+ */
+
+router.post(
+  '/sync-rates',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      await ensureDefaultCurrencies();
+
+      const currencies =
+        await Currency.find({
+          isActive: true
+        }).lean();
+
+      const targets =
+        currencies
+          .map(
+            (currency) =>
+              currency.code
+          )
+          .filter(
+            (code) =>
+              code !== 'EUR'
+          );
+
+      const uniqueTargets =
+        [
+          ...new Set(
+            targets
+          )
+        ];
+
+      const symbols =
+        uniqueTargets.join(',');
+
+      const url =
+        `${FX_BASE}/latest?from=EUR&to=${encodeURIComponent(symbols)}`;
+
+      const response =
+        await fetch(url);
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          `FX provider returned ${response.status}.`
+        );
+      }
+
+      const data =
+        await response.json();
+
+      /*
+       * Need EUR → INR.
+       */
+
+      const eurToInr =
+        Number(
+          data.rates?.INR
+        );
+
+      if (
+        !Number.isFinite(
+          eurToInr
+        ) ||
+        eurToInr <= 0
+      ) {
+        throw new Error(
+          'Unable to obtain EUR → INR FX rate.'
+        );
+      }
+
+      const updated = [];
+
+      /*
+       * EUR itself:
+       *
+       * 1 EUR = 1 / EUR→INR INR
+       *
+       * because our rateFromBase means:
+       *
+       * 1 INR = X currency
+       */
+
+      const eurRate =
+        1 /
+        eurToInr;
+
+      await Currency.updateOne(
+        {
+          code:
+            'EUR'
+        },
+
+        {
+          $set: {
+            rateFromBase:
+              eurRate,
+
+            rateSource:
+              'frankfurter',
+
+            lastRateUpdatedAt:
+              new Date()
+          }
+        }
+      );
+
+      updated.push({
+        code:
+          'EUR',
+
+        rateFromBase:
+          eurRate
+      });
+
+      /*
+       * Other currencies:
+       *
+       * EUR → currency
+       *
+       * divided by
+       *
+       * EUR → INR
+       *
+       * gives:
+       *
+       * INR → currency
+       */
+
+      for (
+        const currency of
+          currencies
+      ) {
+        if (
+          currency.code ===
+          'INR'
+        ) {
+          await Currency.updateOne(
+            {
+              code:
+                'INR'
+            },
+
+            {
+              $set: {
+                rateFromBase:
+                  1,
+
+                rateSource:
+                  'base',
+
+                lastRateUpdatedAt:
+                  new Date()
+              }
+            }
+          );
+
+          updated.push({
+            code:
+              'INR',
+
+            rateFromBase:
+              1
+          });
+
+          continue;
+        }
+
+        if (
+          currency.code ===
+          'EUR'
+        ) {
+          continue;
+        }
+
+        const eurToTarget =
+          Number(
+            data.rates?.[
+              currency.code
+            ]
+          );
+
+        if (
+          !Number.isFinite(
+            eurToTarget
+          ) ||
+          eurToTarget <= 0
+        ) {
+          continue;
+        }
+
+        const inrToTarget =
+          eurToTarget /
+          eurToInr;
+
+        await Currency.updateOne(
+          {
+            code:
+              currency.code
+          },
+
+          {
+            $set: {
+              rateFromBase:
+                inrToTarget,
+
+              rateSource:
+                'frankfurter',
+
+              lastRateUpdatedAt:
+                new Date()
+            }
+          }
+        );
+
+        updated.push({
+          code:
+            currency.code,
+
+          rateFromBase:
+            inrToTarget
+        });
+      }
+
+      const refreshed =
+        await Currency.find({
+          isActive: true
+        })
+          .sort({
+            isBase: -1,
+            code: 1
+          })
+          .lean();
+
+      return res.json({
+        success: true,
+
+        message:
+          'FX rates refreshed successfully.',
+
+        updated,
+
+        currencies:
+          refreshed
+      });
+    } catch (error) {
+      console.error(
+        'Sync FX rates error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          'Unable to refresh FX rates.'
+      });
+    }
+  }
+);
+
+
+/*
+ * =========================================================
+ * RESYNC ALL PRODUCT PRICES
+ * =========================================================
+ * Recomputes prices[] for every product from its
+ * currencyPricing config + the latest Currency.rateFromBase.
+ * Call this after /sync-rates (or on demand) so all
+ * auto/multiplier-mode products pick up new FX rates.
+ * Override-mode prices are left untouched by design.
+ */
+
+router.post(
+  '/resync-product-prices',
+  protect,
+  async (req, res) => {
+    try {
+      const activeCurrencies =
+        await Currency.find({
+          isActive: true
+        }).lean();
+
+      const products =
+        await Product.find({}).select(
+          'price baseCurrency currencyPricing prices name'
+        );
+
+      let updated = 0;
+
+      for (const product of products) {
+        const newPrices =
+          computeCurrencyPrices(
+            product,
+            activeCurrencies
+          );
+
+        const changed =
+          JSON.stringify(newPrices) !==
+          JSON.stringify(
+            product.prices || []
+          );
+
+        if (changed) {
+          product.prices = newPrices;
+          await product.save();
+          updated += 1;
+        }
+      }
+
+      return res.json({
+        success: true,
+        totalProducts: products.length,
+        updated
+      });
+    } catch (error) {
+      console.error(
+        'Resync product prices error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Unable to resync product prices.'
+      });
+    }
+  }
+);
+
+module.exports =
+  router;
