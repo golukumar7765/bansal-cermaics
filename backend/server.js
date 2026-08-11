@@ -116,10 +116,6 @@ app.use(
   '/api/products',
   require('./routes/productRoutes')
 );
-app.use(
-  '/api/currencies',
-  require('./routes/currencyRoutes')
-);
 
 app.use(
   '/api/categories',
