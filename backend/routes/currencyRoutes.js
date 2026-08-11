@@ -13,6 +13,9 @@ const protect =
 const { computeCurrencyPrices } =
   require('../utils/pricing');
 
+const { updateCurrencyRates } =
+  require('../services/exchangeRateService');
+
 const router =
   express.Router();
 
@@ -178,7 +181,8 @@ router.get(
 
       return res.json({
         success: true,
-        currencies
+        currencies,
+        data: currencies
       });
     } catch (error) {
       console.error(
@@ -542,228 +546,12 @@ router.put(
 
 router.post(
   '/sync-rates',
-  async (
-    req,
-    res
-  ) => {
+  async (req, res) => {
     try {
       await ensureDefaultCurrencies();
 
-      const currencies =
-        await Currency.find({
-          isActive: true
-        }).lean();
-
-      const targets =
-        currencies
-          .map(
-            (currency) =>
-              currency.code
-          )
-          .filter(
-            (code) =>
-              code !== 'EUR'
-          );
-
-      const uniqueTargets =
-        [
-          ...new Set(
-            targets
-          )
-        ];
-
-      const symbols =
-        uniqueTargets.join(',');
-
-      const url =
-        `${FX_BASE}/latest?from=EUR&to=${encodeURIComponent(symbols)}`;
-
-      const response =
-        await fetch(url);
-
-      if (
-        !response.ok
-      ) {
-        throw new Error(
-          `FX provider returned ${response.status}.`
-        );
-      }
-
-      const data =
-        await response.json();
-
-      /*
-       * Need EUR → INR.
-       */
-
-      const eurToInr =
-        Number(
-          data.rates?.INR
-        );
-
-      if (
-        !Number.isFinite(
-          eurToInr
-        ) ||
-        eurToInr <= 0
-      ) {
-        throw new Error(
-          'Unable to obtain EUR → INR FX rate.'
-        );
-      }
-
-      const updated = [];
-
-      /*
-       * EUR itself:
-       *
-       * 1 EUR = 1 / EUR→INR INR
-       *
-       * because our rateFromBase means:
-       *
-       * 1 INR = X currency
-       */
-
-      const eurRate =
-        1 /
-        eurToInr;
-
-      await Currency.updateOne(
-        {
-          code:
-            'EUR'
-        },
-
-        {
-          $set: {
-            rateFromBase:
-              eurRate,
-
-            rateSource:
-              'frankfurter',
-
-            lastRateUpdatedAt:
-              new Date()
-          }
-        }
-      );
-
-      updated.push({
-        code:
-          'EUR',
-
-        rateFromBase:
-          eurRate
-      });
-
-      /*
-       * Other currencies:
-       *
-       * EUR → currency
-       *
-       * divided by
-       *
-       * EUR → INR
-       *
-       * gives:
-       *
-       * INR → currency
-       */
-
-      for (
-        const currency of
-          currencies
-      ) {
-        if (
-          currency.code ===
-          'INR'
-        ) {
-          await Currency.updateOne(
-            {
-              code:
-                'INR'
-            },
-
-            {
-              $set: {
-                rateFromBase:
-                  1,
-
-                rateSource:
-                  'base',
-
-                lastRateUpdatedAt:
-                  new Date()
-              }
-            }
-          );
-
-          updated.push({
-            code:
-              'INR',
-
-            rateFromBase:
-              1
-          });
-
-          continue;
-        }
-
-        if (
-          currency.code ===
-          'EUR'
-        ) {
-          continue;
-        }
-
-        const eurToTarget =
-          Number(
-            data.rates?.[
-              currency.code
-            ]
-          );
-
-        if (
-          !Number.isFinite(
-            eurToTarget
-          ) ||
-          eurToTarget <= 0
-        ) {
-          continue;
-        }
-
-        const inrToTarget =
-          eurToTarget /
-          eurToInr;
-
-        await Currency.updateOne(
-          {
-            code:
-              currency.code
-          },
-
-          {
-            $set: {
-              rateFromBase:
-                inrToTarget,
-
-              rateSource:
-                'frankfurter',
-
-              lastRateUpdatedAt:
-                new Date()
-            }
-          }
-        );
-
-        updated.push({
-          code:
-            currency.code,
-
-          rateFromBase:
-            inrToTarget
-        });
-      }
+      const result =
+        await updateCurrencyRates();
 
       const refreshed =
         await Currency.find({
@@ -777,14 +565,11 @@ router.post(
 
       return res.json({
         success: true,
-
-        message:
-          'FX rates refreshed successfully.',
-
-        updated,
-
-        currencies:
-          refreshed
+        message: 'FX rates refreshed successfully.',
+        updated: result.updated,
+        baseCurrency: result.baseCurrency,
+        currencies: refreshed,
+        data: refreshed
       });
     } catch (error) {
       console.error(
@@ -794,7 +579,6 @@ router.post(
 
       return res.status(500).json({
         success: false,
-
         message:
           error.message ||
           'Unable to refresh FX rates.'

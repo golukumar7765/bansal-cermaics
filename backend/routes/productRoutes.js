@@ -333,17 +333,16 @@ router.get(
                   pricingSource:
                     pricing.source
                 };
-              } catch {
-                return {
-                  ...product,
-
-                  displayPrice:
-                    product.price,
-
-                  displayCurrency:
-                    product.baseCurrency ||
-                    'INR'
-                };
+              } catch (pricingError) {
+                /*
+                 * Never silently show the INR/base price while the
+                 * customer has selected another currency.
+                 *
+                 * The pricing service is the single source of truth.
+                 * If the requested currency cannot be resolved, fail
+                 * the request instead of displaying a misleading amount.
+                 */
+                throw pricingError;
               }
             }
           )

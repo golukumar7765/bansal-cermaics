@@ -20,49 +20,68 @@ const currencies = [
     rateFromBase: 1,
     isActive: true
   },
-
   {
     code: 'USD',
     name: 'US Dollar',
     symbol: '$',
     decimalPlaces: 2,
-    rateFromBase: 0.011,
+    rateFromBase: 0,
     isActive: true
   },
-
   {
     code: 'EUR',
     name: 'Euro',
     symbol: '€',
     decimalPlaces: 2,
-    rateFromBase: 0.0095,
+    rateFromBase: 0,
     isActive: true
   },
-
   {
     code: 'GBP',
     name: 'British Pound',
     symbol: '£',
     decimalPlaces: 2,
-    rateFromBase: 0.0082,
+    rateFromBase: 0,
     isActive: true
   },
-
   {
     code: 'AED',
     name: 'UAE Dirham',
     symbol: 'د.إ',
     decimalPlaces: 2,
-    rateFromBase: 0.040,
+    rateFromBase: 0,
     isActive: true
   },
-
   {
     code: 'JPY',
     name: 'Japanese Yen',
     symbol: '¥',
     decimalPlaces: 0,
-    rateFromBase: 1.61,
+    rateFromBase: 0,
+    isActive: true
+  },
+  {
+    code: 'CAD',
+    name: 'Canadian Dollar',
+    symbol: 'C$',
+    decimalPlaces: 2,
+    rateFromBase: 0,
+    isActive: true
+  },
+  {
+    code: 'AUD',
+    name: 'Australian Dollar',
+    symbol: 'A$',
+    decimalPlaces: 2,
+    rateFromBase: 0,
+    isActive: true
+  },
+  {
+    code: 'SGD',
+    name: 'Singapore Dollar',
+    symbol: 'S$',
+    decimalPlaces: 2,
+    rateFromBase: 0,
     isActive: true
   }
 ];

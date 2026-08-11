@@ -12,7 +12,9 @@ const Product =
 const Order =
   require('../models/Order');
 
-const { resolveUnitPrice } = require('../utils/pricing');
+const {
+  getProductPrice
+} = require('../services/pricingService');
 
 const {
   reserveStock,
@@ -745,10 +747,29 @@ router.post(
         let resolved;
 
         try {
-          resolved = resolveUnitPrice(
-            product,
-            orderCurrency
-          );
+          /*
+           * IMPORTANT:
+           * The payment server MUST use the same authoritative
+           * pricingService as product listing/detail/checkout.
+           *
+           * This means an admin only needs to enter the product
+           * base price (e.g. INR 100). USD/EUR/GBP/AED/JPY/etc.
+           * are automatically calculated from the configured FX
+           * rate unless the admin explicitly chooses:
+           *
+           *   auto       = base × FX
+           *   multiplier = base × FX × multiplier
+           *   override   = exact selling price
+           *
+           * Quantity pricing and pricing rules are also applied here.
+           */
+          resolved =
+            await getProductPrice({
+              product,
+              currency:
+                orderCurrency,
+              quantity
+            });
         } catch (priceErr) {
           throw new Error(
             priceErr.message
