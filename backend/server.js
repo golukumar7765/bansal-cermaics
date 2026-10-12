@@ -4,6 +4,7 @@ const cors = require('cors');
 
 const connectDB = require('./config/db');
 const Order = require('./models/Order');
+const siteContentRoutes = require('./routes/siteContentRoutes');
 
 const {
   releaseExpiredReservations
@@ -15,7 +16,7 @@ const {
 );
 dotenv.config();
 
-connectDB();
+// Yahan se connectDB() hata diya gaya hai kyunki use neeche await ke sath start karenge
 
 const app = express();
 
@@ -80,6 +81,7 @@ app.use(
   }),
   require('./routes/paymentRoutes')
 );
+app.use('/api/site-content', siteContentRoutes);
 
 /*
  * ---------------------------------------------------------
@@ -245,8 +247,6 @@ const startInventoryCleanup =
     );
   };
 
-startInventoryCleanup();
-
 /*
  * ---------------------------------------------------------
  * SERVER
@@ -292,16 +292,23 @@ const startExchangeRateSync =
       6 * 60 * 60 * 1000
     );
   };
+const startServerSequence = async () => {
+  try {
+    // 1. Pehle database connect hone ka pura intezaar karo
+    await connectDB();
 
-startExchangeRateSync();
-const PORT =
-  process.env.PORT || 5000;
+    // 2. Uske baad baki services start karo
+    startInventoryCleanup();
+    startExchangeRateSync();
 
-app.listen(
-  PORT,
-  () => {
-    console.log(
-      `🚀 Server running on port ${PORT}`
-    );
+    // 3. Phir Express server start karo
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("Failed to start server due to DB connection:", err);
   }
-);
+};
+
+startServerSequence();

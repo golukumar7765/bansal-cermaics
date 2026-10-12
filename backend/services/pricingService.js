@@ -75,63 +75,51 @@ const applyRule = (
   return result;
 };
 
-const getProductCurrencyConfig =
-  (product, currency) => {
-    const requested =
-      String(currency || '')
-        .trim()
-        .toUpperCase();
+const getProductCurrencyConfig = (product, currency) => {
+  const requested = String(currency || '').trim().toUpperCase();
 
-    /*
-     * Current schema: product.currencyPricing is a Map/object keyed by
-     * currency code. This is what AdminPage sends and what Product.js stores.
-     */
-    let topLevel =
-      product?.currencyPricing;
+  // 1. Try Top-Level (New System)
+  let topLevel = product?.currencyPricing;
+  if (topLevel instanceof Map) {
+    topLevel = Object.fromEntries(topLevel.entries());
+  }
 
-    if (topLevel instanceof Map) {
-      topLevel = Object.fromEntries(
-        topLevel.entries()
-      );
+  let config = null;
+
+  if (topLevel && typeof topLevel === 'object' && topLevel[requested]) {
+    const direct = topLevel[requested];
+    // Only accept if it actually has a multiplier or override setup
+    if (direct && (direct.mode === 'override' || direct.mode === 'multiplier')) {
+      config = direct;
     }
+  }
 
-    if (topLevel && typeof topLevel === 'object') {
-      const direct =
-        topLevel[requested];
-
-      if (direct) {
-        return {
-          ...direct,
-          currency: requested,
-          overridePrice:
-            direct.overridePrice ??
-            direct.price ??
-            null
-        };
+  // 2. Try Nested (Old System) if Top-Level didn't yield a valid config
+  if (!config) {
+    let nested = product?.pricing?.currencyPricing;
+    
+    if (nested instanceof Map) {
+      nested = Object.fromEntries(nested.entries());
+      if (nested[requested]) {
+        config = nested[requested];
       }
+    } else if (Array.isArray(nested)) {
+      // Very old backward compatibility
+      const found = nested.find((item) => String(item?.currency || '').trim().toUpperCase() === requested);
+      if (found) config = found;
     }
+  }
 
-    /*
-     * Backward-compatible schema: pricing.currencyPricing as an array.
-     */
-    const nested =
-      product?.pricing
-        ?.currencyPricing;
+  if (config) {
+    return {
+      ...config,
+      currency: requested,
+      overridePrice: config.overridePrice ?? config.price ?? null
+    };
+  }
 
-    if (Array.isArray(nested)) {
-      return (
-        nested.find(
-          (item) =>
-            String(item?.currency || '')
-              .trim()
-              .toUpperCase() ===
-            requested
-        ) || null
-      );
-    }
-
-    return null;
-  };
+  return null;
+};
 
 const getProductPrice =
   async ({

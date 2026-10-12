@@ -168,16 +168,6 @@ const variantSchema =
 const currencyPricingSchema =
   new mongoose.Schema(
     {
-      /*
-       * auto
-       *      Base Price × FX Rate
-       *
-       * multiplier
-       *      Base Price × FX Rate × multiplier
-       *
-       * override
-       *      Exact selling price
-       */
       mode: {
         type: String,
         enum: [
@@ -187,28 +177,18 @@ const currencyPricingSchema =
         ],
         default: 'auto'
       },
-
-      /*
-       * Used only for multiplier mode.
-       *
-       * Example:
-       *
-       * USD multiplier = 1.5
-       */
       multiplier: {
         type: Number,
         default: 1,
         min: 0
       },
-
-      /*
-       * Used only for override mode.
-       *
-       * Example:
-       *
-       * USD exact price = 2.50
-       */
       price: {
+        type: Number,
+        default: null,
+        min: 0
+      },
+      // 👇 Add this line so overridePrice gets saved successfully
+      overridePrice: {
         type: Number,
         default: null,
         min: 0
@@ -405,6 +385,12 @@ const productSchema =
         trim: true,
         index: true
       },
+      storeType: {
+        type: String,
+        enum: ['B2B', 'B2C'],
+        default: 'B2B',
+        index: true
+      },
 
       /* =====================================================
          CATEGORY
@@ -477,7 +463,11 @@ const productSchema =
         type: pricingSchema,
         default: {}
       },
-
+currencyPricing: {
+        type: Map,
+        of: currencyPricingSchema,
+        default: {}
+      },
       /* =====================================================
          MOQ / STOCK
       ===================================================== */

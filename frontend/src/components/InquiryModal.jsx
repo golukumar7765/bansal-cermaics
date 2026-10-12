@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { X, Send, CheckCircle, Package, Sparkles, MessageCircle } from 'lucide-react';
+import api, { getApiError } from '../lib/api';
 
 const InquiryModal = ({ isOpen, onClose, productName: initialProduct }) => {
   const [inquiryType, setInquiryType] = useState('catalog');
@@ -28,11 +28,11 @@ const InquiryModal = ({ isOpen, onClose, productName: initialProduct }) => {
 
   useEffect(() => {
     if (isOpen) {
-      axios.get('http://localhost:5000/api/categories')
+      api.get('/categories')
         .then(res => setCategories(res.data?.data || res.data || []))
         .catch(err => console.error(err));
 
-      axios.get('http://localhost:5000/api/products')
+      api.get('/products')
         .then(res => setProducts(res.data?.data || res.data || []))
         .catch(err => console.error(err));
 
@@ -70,14 +70,12 @@ const InquiryModal = ({ isOpen, onClose, productName: initialProduct }) => {
     };
 
     try {
-      // URL Fixed to Plural: /api/inquiries
-      await axios.post('http://localhost:5000/api/inquiries', payload);
+      await api.post('/inquiries', payload);
       setSubmittedData(payload);
       setSubmitted(true);
     } catch (err) {
       console.error("Submission Error:", err);
-      // Generic alert ki jagah exact backend error dikhao:
-      alert(err.response?.data?.message || err.message || 'Server Connection Failed');
+      alert(getApiError(err, 'Unable to send your request. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -89,8 +87,7 @@ const InquiryModal = ({ isOpen, onClose, productName: initialProduct }) => {
     onClose();
   };
 
-  const cleanPhone = submittedData?.phone ? submittedData.phone.replace(/[^0-9]/g, '') : '';
-  const adminWhatsAppNumber = '919876543210'; // Apne admin/sales team ka WhatsApp number daalein
+  const adminWhatsAppNumber = '919149062163';
   const whatsappMsg = submittedData 
     ? `Hi Bansal Scientific, I have submitted an RFQ for: ${submittedData.productName} (Qty: ${submittedData.quantity}). Name: ${submittedData.name}`
     : '';

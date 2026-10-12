@@ -10,6 +10,8 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 
 import HomePage from './pages/HomePage';
+import CategoryPage from './pages/CategoryPage';
+import SubcategoryPage from './pages/SubcategoryPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import TechnicalsPage from './pages/TechnicalsPage';
 
@@ -24,8 +26,13 @@ import CheckoutPage from './pages/CheckoutPage';
 import OrderSuccessPage from './pages/OrderSuccessPage';
 
 import CustomerOrderTracking from './pages/CustomerOrderTracking';
-
+import AboutPage from './pages/AboutPage';
+import ServiceSupportPage from './pages/ServiceSupportPage';
 import ProtectedRoute from './components/ProtectedRoute';
+// App.js ke top par import karo
+import FaqPage from './pages/FaqPage';
+
+
 
 function App() {
   return (
@@ -49,9 +56,33 @@ function App() {
           element={<HomePage />}
         />
 
+        {/* Storefront entry points.  These URLs are shareable and SEO-friendly;
+            the pages still use the existing B2B/B2C catalog data. */}
+        <Route
+          path="/scientific"
+          element={<HomePage />}
+        />
+
+        <Route
+          path="/lifestyle"
+          element={<HomePage />}
+        />
+
+        <Route path="/scientific/category/:categoryName" element={<CategoryPage />} />
+        <Route path="/scientific/category/:categoryName/:subcategoryName" element={<SubcategoryPage />} />
+        <Route path="/lifestyle/category/:categoryName" element={<CategoryPage />} />
+        <Route path="/lifestyle/category/:categoryName/:subcategoryName" element={<SubcategoryPage />} />
+        <Route path="/scientific/product/:id" element={<ProductDetailPage />} />
+        <Route path="/lifestyle/product/:id" element={<ProductDetailPage />} />
+
         <Route
           path="/category/:categoryName"
-          element={<HomePage />}
+          element={<CategoryPage />}
+        />
+
+        <Route
+          path="/category/:categoryName/:subcategoryName"
+          element={<SubcategoryPage />}
         />
 
         <Route
@@ -72,6 +103,11 @@ function App() {
         <Route
           path="/contact"
           element={<ContactPage />}
+        />
+
+        <Route
+          path="/service-support"
+          element={<ServiceSupportPage />}
         />
 
         <Route
@@ -119,6 +155,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/about" element={<AboutPage />} />
 
         {/* =========================
             ADMIN RFQ
@@ -145,6 +182,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+<Route path="/faq" element={<FaqPage />} />
 
         {/* =========================
             404

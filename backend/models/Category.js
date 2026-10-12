@@ -50,6 +50,12 @@ const categorySchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    storeType: {
+      type: String,
+      enum: ['B2B', 'B2C'],
+      default: 'B2B',
+      index: true
+    },
 
     /*
      * Admin can define default specification

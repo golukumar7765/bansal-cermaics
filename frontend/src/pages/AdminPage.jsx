@@ -17,7 +17,10 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
-  Settings2
+  Settings2,
+   Archive, ArchiveRestore,
+  FileText,
+  Upload
 } from 'lucide-react';
 
 const API_BASE_URL = '';
@@ -26,6 +29,7 @@ const EMPTY_SPEC = {
   name: '',
   value: ''
 };
+
 
 const EMPTY_VARIANT = {
   name: '',
@@ -215,6 +219,1885 @@ const Field = ({
   </div>
 );
 
+const ProductSection = ({
+  id,
+  title,
+  description,
+  children,
+  right,
+  open,
+  onToggle,
+}) => (
+  <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+    <button
+      type="button"
+      onClick={() => onToggle(id)}
+      className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-800/60 transition"
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
+          {open ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
+        </span>
+
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-white">{title}</h2>
+          {description && (
+            <p className="text-xs text-slate-500 mt-0.5">{description}</p>
+          )}
+        </div>
+      </div>
+
+      {right}
+    </button>
+
+    {open && (
+      <div className="p-5 border-t border-slate-800">{children}</div>
+    )}
+  </section>
+);
+
+const ProductField = ({
+  label,
+  hint,
+  required,
+  children,
+  className = '',
+}) => (
+  <div className={className}>
+    <label className="block mb-2">
+      <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+        {label}
+        {required && <span className="text-rose-400 ml-1">*</span>}
+      </span>
+      {hint && (
+        <span className="block text-[11px] text-slate-600 mt-1">{hint}</span>
+      )}
+    </label>
+    {children}
+  </div>
+);
+
+const ProductAddButton = ({ children, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition"
+  >
+    <Plus size={14} />
+    {children}
+  </button>
+);
+
+const ProductRemoveButton = ({ onClick, title = 'Remove' }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    title={title}
+    className="inline-flex items-center justify-center w-10 h-10 rounded-xl text-rose-400 hover:bg-rose-500/10 transition"
+  >
+    <Trash2 size={16} />
+  </button>
+);
+
+const ProductAdminForm = ({
+  editingProduct,
+  productForm,
+  products = [],
+  rootCategories = [],
+  selectedSubcategories = [],
+  activeCurrencies = [],
+  saving = false,
+  uploading = false,
+  expandedSections = {},
+
+  metadataText = '{}',
+  setMetadataText,
+
+  onSubmit,
+  onCancel,
+
+  updateProduct,
+  updateNestedProduct,
+  handleProductCategoryChange,
+  handleProductSubcategoryChange,
+
+  syncCurrencyRates,
+  addCurrencyPricing,
+  updateCurrencyPricing,
+  removeCurrencyPricing,
+  updateCurrencyPrice,
+  removeCurrencyPrice,
+
+  addQuantityTier,
+  updateQuantityTier,
+  removeQuantityTier,
+
+  handleMainImageUpload,
+  addImage,
+  updateImage,
+  removeImage,
+
+  addSpecification,
+  updateSpecification,
+  removeSpecification,
+
+  addVariant,
+  updateVariant,
+  removeVariant,
+  addVariantAttribute,
+  updateVariantAttribute,
+  removeVariantAttribute,
+
+  addFeature,
+  updateFeature,
+  removeFeature,
+  addApplication,
+  updateApplication,
+  removeApplication,
+
+  addDocument,
+  updateDocument,
+  removeDocument,
+
+  addRelatedProduct,
+  removeRelatedProduct,
+
+  toggleSection,
+}) => {
+  const safeArray = (value) => (Array.isArray(value) ? value : []);
+
+  const inputClass =
+    'w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-3 text-sm text-white placeholder:text-slate-600 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10';
+
+  const textareaClass =
+    `${inputClass} min-h-[110px] resize-y`;
+
+  const sectionClass =
+    'bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm';
+
+  const supportedCurrencyCodes = ['INR', 'USD', 'EUR', 'GBP'];
+
+  const activeCurrencyList = supportedCurrencyCodes.map((code) => {
+    const apiCurrency = activeCurrencies.find(
+      (item) =>
+        String(item?.code || '').trim().toUpperCase() === code
+    );
+
+    const fallback = {
+      INR: { symbol: '₹', rateFromBase: 1 },
+      USD: { symbol: '$', rateFromBase: null },
+      EUR: { symbol: '€', rateFromBase: null },
+      GBP: { symbol: '£', rateFromBase: null },
+    }[code];
+
+    return {
+      code,
+      symbol: apiCurrency?.symbol || fallback.symbol,
+      rateFromBase:
+        code === 'INR'
+          ? 1
+          : apiCurrency?.rateFromBase ?? fallback.rateFromBase,
+      isActive: apiCurrency?.isActive !== false,
+    };
+  }).filter((item) => item.isActive);
+
+  const getCurrency = (code) =>
+    activeCurrencyList.find(
+      (item) =>
+        String(item?.code || '').toUpperCase() ===
+        String(code || '').toUpperCase()
+    );
+
+  const formatMoney = (value, code = productForm.baseCurrency || 'INR') => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+
+    const currency = getCurrency(code);
+    return `${currency?.symbol || ''}${n.toLocaleString('en-IN', {
+      maximumFractionDigits: 2,
+    })} ${code}`;
+  };
+
+  /**
+   * Price range preview.
+   *
+   * It is deliberately derived from the prices already present in the form.
+   * Nothing new is written to Mongo just for the preview.
+   */
+  const priceRange = useMemo(() => {
+    const prices = [];
+
+    const basePrice = Number(productForm.price);
+    if (
+      productForm.price !== '' &&
+      productForm.price !== null &&
+      productForm.price !== undefined &&
+      Number.isFinite(basePrice) &&
+      basePrice >= 0
+    ) {
+      prices.push(basePrice);
+    }
+
+    safeArray(productForm.variants).forEach((variant) => {
+      const price = Number(variant?.price);
+      if (
+        variant?.price !== '' &&
+        variant?.price !== null &&
+        variant?.price !== undefined &&
+        Number.isFinite(price) &&
+        price >= 0
+      ) {
+        prices.push(price);
+      }
+    });
+
+    safeArray(productForm.pricing?.quantityTiers).forEach((tier) => {
+      const price = Number(tier?.price);
+      if (Number.isFinite(price) && price >= 0) {
+        prices.push(price);
+      }
+    });
+
+    if (!prices.length) {
+      return { min: null, max: null };
+    }
+
+    return {
+      min: Math.min(...prices),
+      max: Math.max(...prices),
+    };
+  }, [
+    productForm.price,
+    productForm.variants,
+    productForm.pricing?.quantityTiers,
+  ]);
+
+  const currencyPreview = useMemo(() => {
+    const base = Number(productForm.price);
+    if (!Number.isFinite(base) || base < 0) return [];
+
+    return Object.entries(productForm.currencyPricing || {}).map(
+      ([rawCode, config]) => {
+        const code = String(rawCode).toUpperCase();
+        const currency = getCurrency(code);
+        const rate = Number(currency?.rateFromBase);
+        const multiplier = Number(config?.multiplier ?? 1);
+
+        const autoAmount =
+          Number.isFinite(rate) && rate > 0 ? base * rate : null;
+
+        const multiplierAmount =
+          autoAmount !== null
+            ? autoAmount *
+              (Number.isFinite(multiplier) ? multiplier : 1)
+            : null;
+
+        let preview = null;
+
+        if (config?.mode === 'override') {
+          const override = Number(
+            config?.overridePrice ?? config?.price
+          );
+          preview = Number.isFinite(override) ? override : null;
+        } else if (config?.mode === 'multiplier') {
+          preview = multiplierAmount;
+        } else {
+          preview = autoAmount;
+        }
+
+        return {
+          code,
+          symbol: currency?.symbol || '',
+          rate,
+          preview,
+        };
+      }
+    );
+  }, [
+    productForm.price,
+    productForm.currencyPricing,
+    activeCurrencyList,
+  ]);
+
+  const sectionOpen = (id) => expandedSections[id] ?? true;
+
+  return (
+    <form onSubmit={onSubmit} className="max-w-7xl space-y-5 pb-28">
+      {/* PAGE HEADER */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 text-[11px] font-bold uppercase tracking-wider">
+              Product Catalog
+            </span>
+
+            {editingProduct && (
+              <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 text-[11px] font-bold uppercase tracking-wider">
+                Editing
+              </span>
+            )}
+          </div>
+
+          <h1 className="text-2xl lg:text-3xl font-bold text-white">
+            {editingProduct ? 'Edit Product' : 'Create Product'}
+          </h1>
+
+          <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+            Manage product information, pricing, specifications, variants,
+            media, SEO and all dynamic catalog data from one place.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm font-medium"
+        >
+          <X size={16} />
+          Cancel
+        </button>
+      </div>
+
+      {/* QUICK PRICE SUMMARY */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-400">
+            Base Price
+          </div>
+          <div className="text-xl font-bold text-white mt-1">
+            {formatMoney(productForm.price)}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            Base currency: {productForm.baseCurrency || 'INR'}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-400">
+            Product Price Range
+          </div>
+          <div className="text-xl font-bold text-white mt-1">
+            {priceRange.min !== null
+              ? `${formatMoney(priceRange.min)}`
+              : '—'}
+            {priceRange.min !== null &&
+              priceRange.max !== null &&
+              priceRange.min !== priceRange.max && (
+                <>
+                  <span className="text-slate-500 mx-1">–</span>
+                  {formatMoney(priceRange.max)}
+                </>
+              )}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            Auto-derived from base, variant and quantity-tier prices.
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-400">
+            Dynamic Factors
+          </div>
+          <div className="text-xl font-bold text-white mt-1">
+            {safeArray(productForm.variants).length}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            Variants / capacity / purity / size / grade combinations.
+          </div>
+        </div>
+      </div>
+
+      {/* BASIC INFORMATION */}
+      <ProductSection
+        id="basic"
+        title="Basic Product Information"
+        description="Core identity, category, inventory and publishing controls."
+        right={<Settings2 size={17} className="text-blue-400" />}
+        open={sectionOpen('basic')}
+        onToggle={toggleSection}
+      >
+        <div className="grid lg:grid-cols-2 gap-5">
+          <ProductField label="SKU" required hint="Unique product code used internally.">
+            <input
+              className={inputClass}
+              value={productForm.sku || ''}
+              onChange={(e) => updateProduct('sku', e.target.value)}
+              placeholder="Example: BSC-ALUMINA-001"
+              required
+            />
+          </ProductField>
+
+          <ProductField
+            label="Product Name"
+            required
+            hint="Customer-facing product name."
+          >
+            <input
+              className={inputClass}
+              value={productForm.name || ''}
+              onChange={(e) => updateProduct('name', e.target.value)}
+              placeholder="Example: High Purity Alumina Crucible"
+              required
+            />
+          </ProductField>
+
+          <ProductField label="Category">
+            <select
+              className={inputClass}
+              value={productForm.categoryId || ''}
+              onChange={(e) =>
+                handleProductCategoryChange(e.target.value)
+              }
+            >
+              <option value="">Select category</option>
+              {rootCategories.map((category) => (
+                <option key={category._id} value={category._id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </ProductField>
+
+          <ProductField label="Subcategory">
+            <select
+              className={inputClass}
+              value={productForm.subcategoryId || ''}
+              onChange={(e) =>
+                handleProductSubcategoryChange(e.target.value)
+              }
+              disabled={!productForm.categoryId}
+            >
+              <option value="">No subcategory</option>
+              {selectedSubcategories.map((subcategory) => (
+                <option
+                  key={subcategory._id}
+                  value={subcategory._id}
+                >
+                  {subcategory.name}
+                </option>
+              ))}
+            </select>
+          </ProductField>
+        </div>
+
+        <div className="grid md:grid-cols-4 gap-4 mt-5">
+          <ProductField
+            label="Base Price"
+            hint="Keep the master/base selling price in INR."
+          >
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className={inputClass}
+              value={productForm.price ?? ''}
+              onChange={(e) => updateProduct('price', e.target.value)}
+              placeholder="0.00"
+            />
+          </ProductField>
+
+          <ProductField
+            label="Base Currency"
+            hint="Fixed master currency. All dynamic currency prices originate from INR."
+          >
+            <div className={`${inputClass} flex items-center justify-between`}>
+              <span className="font-semibold text-white">INR ₹</span>
+              <span className="text-[11px] text-emerald-400">MASTER</span>
+            </div>
+          </ProductField>
+
+          <ProductField label="MOQ" hint="Minimum order quantity.">
+            <input
+              type="number"
+              min="1"
+              className={inputClass}
+              value={productForm.moq ?? 1}
+              onChange={(e) => updateProduct('moq', e.target.value)}
+            />
+          </ProductField>
+
+          <ProductField label="Stock" hint="Current available quantity.">
+            <input
+              type="number"
+              min="0"
+              className={inputClass}
+              value={productForm.stock ?? 0}
+              onChange={(e) => updateProduct('stock', e.target.value)}
+            />
+          </ProductField>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+          {[
+            ['isDirectPurchaseAllowed', 'Direct Purchase'],
+            ['published', 'Published'],
+            ['featured', 'Featured'],
+            ['archived', 'Archived'],
+          ].map(([field, label]) => (
+            <label
+              key={field}
+              className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(productForm[field])}
+                onChange={(e) =>
+                  updateProduct(field, e.target.checked)
+                }
+              />
+              <span className="text-slate-200">{label}</span>
+            </label>
+          ))}
+        </div>
+      </ProductSection>
+
+      {/* PRICING */}
+      <ProductSection
+        id="pricing"
+        title="Pricing & Currency Rules"
+        description="INR is the base. Other currencies can use live FX, multiplier or exact override."
+        open={sectionOpen('pricing')}
+        onToggle={toggleSection}
+      >
+        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 mb-5">
+          <div className="flex gap-3">
+            <div className="w-9 h-9 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
+              ₹
+            </div>
+            <div>
+              <div className="font-semibold text-blue-100">
+                Base currency pricing logic
+              </div>
+              <p className="text-xs text-blue-300/70 mt-1 leading-5">
+                Base price stays in INR. For USD / EUR / GBP you can use
+                Auto FX, FX × Multiplier, or Exact Override independently.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-4">
+          <ProductField label="Pricing Mode">
+            <select
+              className={inputClass}
+              value={productForm.pricing?.pricingMode || 'base'}
+              onChange={(e) =>
+                updateNestedProduct(
+                  'pricing',
+                  'pricingMode',
+                  e.target.value
+                )
+              }
+            >
+              <option value="base">Base Price</option>
+              <option value="currency">Currency Overrides</option>
+              <option value="rule">Pricing Rules</option>
+            </select>
+          </ProductField>
+
+          <label className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm self-end">
+            <input
+              type="checkbox"
+              checked={
+                productForm.pricing?.allowCurrencyConversion !== false
+              }
+              onChange={(e) =>
+                updateNestedProduct(
+                  'pricing',
+                  'allowCurrencyConversion',
+                  e.target.checked
+                )
+              }
+            />
+            Allow Currency Conversion
+          </label>
+
+          <label className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm self-end">
+            <input
+              type="checkbox"
+              checked={
+                productForm.pricing?.allowQuantityPricing || false
+              }
+              onChange={(e) =>
+                updateNestedProduct(
+                  'pricing',
+                  'allowQuantityPricing',
+                  e.target.checked
+                )
+              }
+            />
+            Quantity Pricing
+          </label>
+        </div>
+
+        <div className="mt-7">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-white">
+                Currency Pricing Strategy
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Only the four supported currencies are shown: INR, USD, EUR and GBP.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={syncCurrencyRates}
+              className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+            >
+              Refresh FX Rates
+            </button>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4 mt-4">
+            {Object.entries(productForm.currencyPricing || {})
+              .filter(([code]) => String(code).trim())
+              .map(([rawCode, config]) => {
+                const code = String(rawCode).toUpperCase();
+                const currency = getCurrency(code);
+                const rate = Number(currency?.rateFromBase);
+                const base = Number(productForm.price);
+                const multiplier = Number(config?.multiplier ?? 1);
+
+                const autoAmount =
+                  Number.isFinite(rate) && rate > 0 && Number.isFinite(base)
+                    ? base * rate
+                    : null;
+
+                const multiplierAmount =
+                  autoAmount !== null
+                    ? autoAmount *
+                      (Number.isFinite(multiplier) ? multiplier : 1)
+                    : null;
+
+                let preview = null;
+
+                if (config?.mode === 'override') {
+                  const override = Number(
+                    config?.overridePrice ?? config?.price
+                  );
+                  preview = Number.isFinite(override) ? override : null;
+                } else if (config?.mode === 'multiplier') {
+                  preview = multiplierAmount;
+                } else {
+                  preview = autoAmount;
+                }
+
+                return (
+                  <div
+                    key={code}
+                    className="rounded-2xl border border-slate-800 bg-slate-950 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <div>
+                        <div className="font-bold text-white">
+                          {code} {currency?.symbol || ''}
+                        </div>
+                        <div className="text-[11px] text-slate-600 mt-1">
+                          1 {productForm.baseCurrency || 'INR'} ={' '}
+                          {Number.isFinite(rate) ? rate : '—'} {code}
+                        </div>
+                      </div>
+
+                      <ProductRemoveButton
+                        title={`Remove ${code}`}
+                        onClick={() => removeCurrencyPricing(code)}
+                      />
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <ProductField label="Pricing Mode">
+                        <select
+                          className={inputClass}
+                          value={config?.mode || 'auto'}
+                          onChange={(e) =>
+                            updateCurrencyPricing(
+                              code,
+                              'mode',
+                              e.target.value
+                            )
+                          }
+                        >
+                          <option value="auto">Auto FX Rate</option>
+                          <option value="multiplier">
+                            FX × Multiplier
+                          </option>
+                          <option value="override">
+                            Exact Override
+                          </option>
+                        </select>
+                      </ProductField>
+
+                      {config?.mode === 'override' ? (
+                        <ProductField label="Exact Selling Price">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className={inputClass}
+                            value={
+                              config?.overridePrice ??
+                              config?.price ??
+                              ''
+                            }
+                            onChange={(e) =>
+                              updateCurrencyPricing(
+                                code,
+                                'overridePrice',
+                                e.target.value
+                              )
+                            }
+                            placeholder={`Price in ${code}`}
+                          />
+                        </ProductField>
+                      ) : (
+                        <ProductField
+                          label="Multiplier"
+                          hint={
+                            config?.mode === 'multiplier'
+                              ? 'Example: 1.08 = 8% above FX result.'
+                              : 'Used only in multiplier mode.'
+                          }
+                        >
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className={inputClass}
+                            value={config?.multiplier ?? 1}
+                            disabled={config?.mode !== 'multiplier'}
+                            onChange={(e) =>
+                              updateCurrencyPricing(
+                                code,
+                                'multiplier',
+                                e.target.value
+                              )
+                            }
+                          />
+                        </ProductField>
+                      )}
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
+                      <div className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold">
+                        Live Preview
+                      </div>
+                      <div className="text-lg font-bold text-white mt-1">
+                        {preview !== null
+                          ? formatMoney(preview, code)
+                          : 'Rate unavailable'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          <div className="flex flex-wrap gap-2 mt-4">
+            {activeCurrencyList
+              .filter(
+                (currency) =>
+                  !productForm.currencyPricing?.[currency.code]
+              )
+              .map((currency) => (
+                <button
+                  key={currency.code}
+                  type="button"
+                  onClick={() =>
+                    addCurrencyPricing(currency.code)
+                  }
+                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold"
+                >
+                  + {currency.code}
+                </button>
+              ))}
+          </div>
+
+          {currencyPreview.length > 0 && (
+            <div className="mt-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {currencyPreview.map((item) => (
+                <div
+                  key={item.code}
+                  className="rounded-xl border border-slate-800 bg-slate-950 p-3"
+                >
+                  <div className="text-[10px] uppercase text-slate-600 font-semibold">
+                    {item.code}
+                  </div>
+                  <div className="text-sm font-bold text-white mt-1">
+                    {item.preview !== null
+                      ? formatMoney(item.preview, item.code)
+                      : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Legacy compatibility */}
+        {Object.keys(productForm.currencyPrices || {}).length > 0 && (
+          <div className="mt-7 pt-5 border-t border-slate-800">
+            <h3 className="font-semibold text-white">
+              Legacy Exact Currency Overrides
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Existing currencyPrices are kept for compatibility with older products.
+            </p>
+
+            <div className="space-y-2 mt-4">
+              {Object.entries(productForm.currencyPrices || {}).map(
+                ([code, value]) => (
+                  <div
+                    key={code}
+                    className="grid grid-cols-[100px_1fr_auto] gap-2"
+                  >
+                    <div className="flex items-center px-3 rounded-xl bg-slate-950 border border-slate-800 text-sm font-semibold">
+                      {code}
+                    </div>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.000001"
+                      className={inputClass}
+                      value={value}
+                      onChange={(e) =>
+                        updateCurrencyPrice(
+                          code,
+                          e.target.value
+                        )
+                      }
+                    />
+
+                    <ProductRemoveButton
+                      onClick={() =>
+                        removeCurrencyPrice(code)
+                      }
+                    />
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
+      </ProductSection>
+
+      {/* QUANTITY PRICING */}
+      <ProductSection
+        id="quantityPricing"
+        title="Quantity Tier Pricing"
+        description="Create as many quantity breaks as you need."
+        right={<ProductAddButton onClick={addQuantityTier}>Add Tier</ProductAddButton>}
+        open={sectionOpen('quantityPricing')}
+        onToggle={toggleSection}
+      >
+        <div className="rounded-xl border border-slate-800 overflow-hidden">
+          <div className="hidden md:grid grid-cols-[1fr_1fr_1.2fr_1fr_auto] gap-3 bg-slate-950 px-4 py-3 text-[10px] uppercase tracking-wide text-slate-500 font-semibold">
+            <div>Min Quantity</div>
+            <div>Max Quantity</div>
+            <div>Unit Price</div>
+            <div>Currency</div>
+            <div />
+          </div>
+
+          <div className="p-3 space-y-3">
+            {safeArray(productForm.pricing?.quantityTiers).map(
+              (tier, index) => (
+                <div
+                  key={index}
+                  className="grid md:grid-cols-[1fr_1fr_1.2fr_1fr_auto] gap-3 items-end"
+                >
+                  <ProductField label="Min Quantity">
+                    <input
+                      type="number"
+                      min="1"
+                      className={inputClass}
+                      value={tier.minQuantity ?? 1}
+                      onChange={(e) =>
+                        updateQuantityTier(
+                          index,
+                          'minQuantity',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </ProductField>
+
+                  <ProductField
+                    label="Max Quantity"
+                    hint="Leave empty for no upper limit."
+                  >
+                    <input
+                      type="number"
+                      min="1"
+                      className={inputClass}
+                      value={tier.maxQuantity ?? ''}
+                      onChange={(e) =>
+                        updateQuantityTier(
+                          index,
+                          'maxQuantity',
+                          e.target.value
+                        )
+                      }
+                      placeholder="∞"
+                    />
+                  </ProductField>
+
+                  <ProductField label="Unit Price">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className={inputClass}
+                      value={tier.price ?? ''}
+                      onChange={(e) =>
+                        updateQuantityTier(
+                          index,
+                          'price',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </ProductField>
+
+                  <ProductField label="Currency">
+                    <select
+                      className={inputClass}
+                      value={
+                        tier.currency ||
+                        productForm.baseCurrency ||
+                        'INR'
+                      }
+                      onChange={(e) =>
+                        updateQuantityTier(
+                          index,
+                          'currency',
+                          e.target.value
+                        )
+                      }
+                    >
+                      {activeCurrencyList.map((currency) => (
+                        <option
+                          key={currency.code}
+                          value={currency.code}
+                        >
+                          {currency.code}
+                        </option>
+                      ))}
+                    </select>
+                  </ProductField>
+
+                  <ProductRemoveButton
+                    onClick={() => removeQuantityTier(index)}
+                  />
+                </div>
+              )
+            )}
+
+            {safeArray(productForm.pricing?.quantityTiers).length ===
+              0 && (
+              <div className="py-8 text-center text-sm text-slate-600">
+                No quantity tiers. Click “Add Tier” to create wholesale pricing.
+              </div>
+            )}
+          </div>
+        </div>
+      </ProductSection>
+
+      {/* MEDIA */}
+      <ProductSection
+        id="media"
+        title="Product Images & Documents"
+        description="Main image, gallery, alt text, ordering and product documents."
+        open={sectionOpen('media')}
+        onToggle={toggleSection}
+      >
+        <div className="grid lg:grid-cols-[1.2fr_.8fr] gap-5">
+          <ProductField
+            label="Main Image URL"
+            hint="The main product image shown on listing/detail pages."
+          >
+            <input
+              className={inputClass}
+              value={productForm.imageUrl || ''}
+              onChange={(e) =>
+                updateProduct('imageUrl', e.target.value)
+              }
+              placeholder="https://..."
+            />
+          </ProductField>
+
+          <ProductField label="Upload Main Image">
+            <label className="flex items-center gap-3 w-full min-h-[48px] px-4 rounded-xl bg-slate-950 border border-dashed border-slate-700 hover:border-blue-500 cursor-pointer transition">
+              <Upload size={17} className="text-blue-400" />
+              <span className="text-sm text-slate-400">
+                {uploading ? 'Uploading...' : 'Choose image'}
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleMainImageUpload}
+                className="hidden"
+                disabled={uploading}
+              />
+            </label>
+          </ProductField>
+        </div>
+
+        {productForm.imageUrl && (
+          <div className="mt-5 flex items-start gap-4 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+            <img
+              src={productForm.imageUrl}
+              alt={productForm.name || 'Product'}
+              className="w-28 h-28 object-cover rounded-xl border border-slate-800"
+            />
+            <div>
+              <div className="text-xs font-semibold text-slate-400 uppercase">
+                Current Main Image
+              </div>
+              <div className="text-sm text-slate-300 mt-1 break-all">
+                {productForm.imageUrl}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-7">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="font-semibold text-white">Product Gallery</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Add unlimited images. One image can be marked Primary.
+              </p>
+            </div>
+
+            <ProductAddButton onClick={addImage}>Add Image</ProductAddButton>
+          </div>
+
+          <div className="space-y-3">
+            {safeArray(productForm.images).map((image, index) => (
+              <div
+                key={index}
+                className="grid lg:grid-cols-[90px_1.5fr_1fr_100px_auto_auto] gap-3 items-center p-3 rounded-xl bg-slate-950 border border-slate-800"
+              >
+                <div className="w-[90px] h-[70px] rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center overflow-hidden">
+                  {image.url ? (
+                    <img
+                      src={image.url}
+                      alt={image.alt || productForm.name || ''}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <ImageIcon
+                      size={20}
+                      className="text-slate-700"
+                    />
+                  )}
+                </div>
+
+                <ProductField label="Image URL">
+                  <input
+                    className={inputClass}
+                    value={image.url || ''}
+                    onChange={(e) =>
+                      updateImage(index, 'url', e.target.value)
+                    }
+                    placeholder="https://..."
+                  />
+                </ProductField>
+
+                <ProductField label="Alt Text">
+                  <input
+                    className={inputClass}
+                    value={image.alt || ''}
+                    onChange={(e) =>
+                      updateImage(index, 'alt', e.target.value)
+                    }
+                    placeholder="Product image description"
+                  />
+                </ProductField>
+
+                <ProductField label="Sort Order">
+                  <input
+                    type="number"
+                    className={inputClass}
+                    value={image.sortOrder ?? index}
+                    onChange={(e) =>
+                      updateImage(
+                        index,
+                        'sortOrder',
+                        e.target.value
+                      )
+                    }
+                  />
+                </ProductField>
+
+                <label className="flex items-center gap-2 text-xs text-slate-400 px-2">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(image.isPrimary)}
+                    onChange={(e) =>
+                      updateImage(
+                        index,
+                        'isPrimary',
+                        e.target.checked
+                      )
+                    }
+                  />
+                  Primary
+                </label>
+
+                <ProductRemoveButton
+                  onClick={() => removeImage(index)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-7">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="font-semibold text-white">Documents</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Datasheets, manuals, certificates and PDFs.
+              </p>
+            </div>
+
+            <ProductAddButton onClick={addDocument}>
+              Add Document
+            </ProductAddButton>
+          </div>
+
+          <div className="space-y-3">
+            {safeArray(productForm.documents).map(
+              (document, index) => (
+                <div
+                  key={index}
+                  className="grid lg:grid-cols-[1fr_2fr_1fr_auto] gap-3 items-end p-3 rounded-xl bg-slate-950 border border-slate-800"
+                >
+                  <ProductField label="Document Name">
+                    <input
+                      className={inputClass}
+                      value={document.name || ''}
+                      onChange={(e) =>
+                        updateDocument(
+                          index,
+                          'name',
+                          e.target.value
+                        )
+                      }
+                      placeholder="Technical Datasheet"
+                    />
+                  </ProductField>
+
+                  <ProductField label="Document URL">
+                    <input
+                      className={inputClass}
+                      value={document.url || ''}
+                      onChange={(e) =>
+                        updateDocument(
+                          index,
+                          'url',
+                          e.target.value
+                        )
+                      }
+                      placeholder="https://..."
+                    />
+                  </ProductField>
+
+                  <ProductField label="Type">
+                    <input
+                      className={inputClass}
+                      value={document.type || ''}
+                      onChange={(e) =>
+                        updateDocument(
+                          index,
+                          'type',
+                          e.target.value
+                        )
+                      }
+                      placeholder="PDF / Datasheet / Manual"
+                    />
+                  </ProductField>
+
+                  <ProductRemoveButton
+                    onClick={() => removeDocument(index)}
+                  />
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </ProductSection>
+
+      {/* SPECIFICATIONS */}
+      <ProductSection
+        id="specifications"
+        title="Dynamic Specifications"
+        description="No hardcoded fields. Add Material, Purity, Capacity, Size, Temperature or any other specification."
+        right={<ProductAddButton onClick={addSpecification}>Add Specification</ProductAddButton>}
+        open={sectionOpen('specifications')}
+        onToggle={toggleSection}
+      >
+        <div className="rounded-2xl border border-blue-500/10 bg-blue-500/5 p-4 mb-4">
+          <div className="text-xs font-semibold text-blue-300">
+            How to use this
+          </div>
+          <p className="text-xs text-slate-500 mt-1 leading-5">
+            Example: Material → High Alumina, Purity → 99.8%, Capacity →
+            250 ml, Maximum Temperature → 1750°C. You can add as many rows as
+            required for each product.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {safeArray(productForm.specifications).map(
+            (spec, index) => (
+              <div
+                key={index}
+                className="grid lg:grid-cols-[1fr_2fr_auto] gap-3 items-end p-3 rounded-xl bg-slate-950 border border-slate-800"
+              >
+                <ProductField label="Specification Name">
+                  <input
+                    className={inputClass}
+                    placeholder="Purity / Capacity / Material"
+                    value={spec.name || ''}
+                    onChange={(e) =>
+                      updateSpecification(
+                        index,
+                        'name',
+                        e.target.value
+                      )
+                    }
+                  />
+                </ProductField>
+
+                <ProductField label="Specification Value">
+                  <input
+                    className={inputClass}
+                    placeholder="99.8% / 250 ml / High Alumina"
+                    value={spec.value || ''}
+                    onChange={(e) =>
+                      updateSpecification(
+                        index,
+                        'value',
+                        e.target.value
+                      )
+                    }
+                  />
+                </ProductField>
+
+                <ProductRemoveButton
+                  onClick={() => removeSpecification(index)}
+                />
+              </div>
+            )
+          )}
+
+          {safeArray(productForm.specifications).length === 0 && (
+            <div className="py-8 text-center text-sm text-slate-600">
+              No specifications yet. Add your first dynamic specification.
+            </div>
+          )}
+        </div>
+      </ProductSection>
+
+      {/* VARIANTS / PRICING FACTORS */}
+      <ProductSection
+        id="variants"
+        title="Variants & Dynamic Pricing Factors"
+        description="Use variants for capacity, purity, size, grade or any combination that changes price."
+        right={<ProductAddButton onClick={addVariant}>Add Variant</ProductAddButton>}
+        open={sectionOpen('variants')}
+        onToggle={toggleSection}
+      >
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 mb-5">
+          <div className="text-xs font-semibold text-amber-300">
+            Example for your ceramic products
+          </div>
+          <p className="text-xs text-slate-500 mt-1 leading-5">
+            Variant #1 → Capacity: 5 ml, Purity: AC998, Price: ₹250.
+            Variant #2 → Capacity: 1000 ml, Purity: AC998, Price: ₹16,005.
+            Add another variant for any new capacity, purity, diameter, size,
+            grade or other price-changing factor.
+          </p>
+        </div>
+
+        <div className="space-y-5">
+          {safeArray(productForm.variants).map(
+            (variant, index) => (
+              <div
+                key={index}
+                className="rounded-2xl border border-slate-800 bg-slate-950 p-4"
+              >
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center text-xs font-bold">
+                        {index + 1}
+                      </span>
+                      <h3 className="font-semibold text-white">
+                        Variant #{index + 1}
+                      </h3>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-1">
+                      Each variant can carry its own price, stock and attributes.
+                    </p>
+                  </div>
+
+                  <ProductRemoveButton
+                    onClick={() => removeVariant(index)}
+                  />
+                </div>
+
+                <div className="grid lg:grid-cols-4 gap-3">
+                  <ProductField label="Variant Name">
+                    <input
+                      className={inputClass}
+                      placeholder="250 ml / AC998 / 50 mm"
+                      value={variant.name || ''}
+                      onChange={(e) =>
+                        updateVariant(
+                          index,
+                          'name',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </ProductField>
+
+                  <ProductField label="Variant SKU">
+                    <input
+                      className={inputClass}
+                      placeholder="BSC-AL-250-AC998"
+                      value={variant.sku || ''}
+                      onChange={(e) =>
+                        updateVariant(
+                          index,
+                          'sku',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </ProductField>
+
+                  <ProductField label="Variant Price">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className={inputClass}
+                      placeholder="250.00"
+                      value={variant.price ?? ''}
+                      onChange={(e) =>
+                        updateVariant(
+                          index,
+                          'price',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </ProductField>
+
+                  <ProductField label="Variant Stock">
+                    <input
+                      type="number"
+                      min="0"
+                      className={inputClass}
+                      placeholder="0"
+                      value={variant.stock ?? 0}
+                      onChange={(e) =>
+                        updateVariant(
+                          index,
+                          'stock',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </ProductField>
+                </div>
+
+                <div className="mt-4">
+                  <ProductField label="Variant Image URL">
+                    <input
+                      className={inputClass}
+                      placeholder="https://..."
+                      value={variant.imageUrl || ''}
+                      onChange={(e) =>
+                        updateVariant(
+                          index,
+                          'imageUrl',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </ProductField>
+                </div>
+
+                <div className="mt-5 pt-5 border-t border-slate-800">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">
+                        Pricing Factors / Variant Attributes
+                      </h4>
+                      <p className="text-[11px] text-slate-600 mt-1">
+                        Add unlimited key/value factors such as Capacity, Purity,
+                        Grade, Size, Diameter, Material, Finish, etc.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        addVariantAttribute(index)
+                      }
+                      className="text-xs font-semibold text-blue-400 hover:text-blue-300"
+                    >
+                      + Add Factor
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {Object.entries(
+                      variant.attributes || {}
+                    ).map(([key, value]) => (
+                      <div
+                        key={`${index}-${key}`}
+                        className="grid sm:grid-cols-[1fr_1fr_auto] gap-2"
+                      >
+                        <input
+                          className={inputClass}
+                          placeholder="Factor name — Capacity / Purity"
+                          value={key}
+                          onChange={(e) =>
+                            updateVariantAttribute(
+                              index,
+                              key,
+                              e.target.value,
+                              value
+                            )
+                          }
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Factor value — 250 ml / 99.8%"
+                          value={value}
+                          onChange={(e) =>
+                            updateVariantAttribute(
+                              index,
+                              key,
+                              key,
+                              e.target.value
+                            )
+                          }
+                        />
+
+                        <ProductRemoveButton
+                          onClick={() =>
+                            removeVariantAttribute(
+                              index,
+                              key
+                            )
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="inline-flex items-center gap-2 mt-5 text-sm text-slate-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={variant.isActive !== false}
+                    onChange={(e) =>
+                      updateVariant(
+                        index,
+                        'isActive',
+                        e.target.checked
+                      )
+                    }
+                  />
+                  Variant Active
+                </label>
+              </div>
+            )
+          )}
+
+          {safeArray(productForm.variants).length === 0 && (
+            <div className="py-10 text-center border border-dashed border-slate-800 rounded-2xl">
+              <div className="text-sm text-slate-500">
+                No variants configured.
+              </div>
+              <div className="text-xs text-slate-700 mt-1">
+                Add variants when capacity, purity, size or another factor changes price.
+              </div>
+            </div>
+          )}
+        </div>
+      </ProductSection>
+
+      {/* CONTENT */}
+      <ProductSection
+        id="content"
+        title="Product Content"
+        description="Customer-facing copy, features and applications."
+        open={sectionOpen('content')}
+        onToggle={toggleSection}
+      >
+        <div className="space-y-5">
+          <ProductField
+            label="Short Description"
+            hint="Use this for the short product summary shown near the product title."
+          >
+            <textarea
+              className={textareaClass}
+              value={productForm.shortDescription || ''}
+              onChange={(e) =>
+                updateProduct(
+                  'shortDescription',
+                  e.target.value
+                )
+              }
+              placeholder="High-purity alumina crucibles designed for high-temperature laboratory applications..."
+            />
+          </ProductField>
+
+          <ProductField
+            label="Full Description"
+            hint="Detailed product description for the product detail page."
+          >
+            <textarea
+              className={`${textareaClass} min-h-[200px]`}
+              value={productForm.description || ''}
+              onChange={(e) =>
+                updateProduct(
+                  'description',
+                  e.target.value
+                )
+              }
+              placeholder="Describe construction, performance, applications, compatibility, temperature range, etc."
+            />
+          </ProductField>
+
+          <div>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-semibold text-white">
+                  Product Features
+                </h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Add unlimited bullet-style benefits.
+                </p>
+              </div>
+
+              <ProductAddButton onClick={addFeature}>
+                Add Feature
+              </ProductAddButton>
+            </div>
+
+            <div className="space-y-2">
+              {safeArray(productForm.features).map(
+                (feature, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      className={inputClass}
+                      value={feature || ''}
+                      onChange={(e) =>
+                        updateFeature(
+                          index,
+                          e.target.value
+                        )
+                      }
+                      placeholder="Excellent thermal and chemical resistance"
+                    />
+                    <ProductRemoveButton
+                      onClick={() => removeFeature(index)}
+                    />
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-semibold text-white">
+                  Applications
+                </h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Add unlimited use cases / industries.
+                </p>
+              </div>
+
+              <ProductAddButton onClick={addApplication}>
+                Add Application
+              </ProductAddButton>
+            </div>
+
+            <div className="space-y-2">
+              {safeArray(productForm.applications).map(
+                (application, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      className={inputClass}
+                      value={application || ''}
+                      onChange={(e) =>
+                        updateApplication(
+                          index,
+                          e.target.value
+                        )
+                      }
+                      placeholder="Chemical analysis / Metallurgy / Research"
+                    />
+                    <ProductRemoveButton
+                      onClick={() =>
+                        removeApplication(index)
+                      }
+                    />
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      </ProductSection>
+
+      {/* SEO */}
+      <ProductSection
+        id="seo"
+        title="SEO Settings"
+        description="Search-engine title, slug, description and keywords."
+        open={sectionOpen('seo')}
+        onToggle={toggleSection}
+      >
+        <div className="grid lg:grid-cols-2 gap-5">
+          <ProductField
+            label="SEO Title"
+            hint="Recommended: clear product name + important keyword."
+          >
+            <input
+              className={inputClass}
+              value={productForm.seo?.title || ''}
+              onChange={(e) =>
+                updateNestedProduct(
+                  'seo',
+                  'title',
+                  e.target.value
+                )
+              }
+              placeholder="High Alumina Crucible | 99.8% Alumina | Bansal Scientific"
+            />
+          </ProductField>
+
+          <ProductField label="SEO Slug" hint="URL-friendly product slug.">
+            <input
+              className={inputClass}
+              value={productForm.seo?.slug || ''}
+              onChange={(e) =>
+                updateNestedProduct(
+                  'seo',
+                  'slug',
+                  e.target.value
+                )
+              }
+              placeholder="high-alumina-crucible"
+            />
+          </ProductField>
+        </div>
+
+        <div className="mt-5">
+          <ProductField
+            label="SEO Description"
+            hint="Short search-result description focused on the product."
+          >
+            <textarea
+              className={textareaClass}
+              value={productForm.seo?.description || ''}
+              onChange={(e) =>
+                updateNestedProduct(
+                  'seo',
+                  'description',
+                  e.target.value
+                )
+              }
+              placeholder="Buy high purity alumina crucibles for high-temperature laboratory and industrial applications..."
+            />
+          </ProductField>
+        </div>
+
+        <div className="mt-5">
+          <ProductField
+            label="SEO Keywords"
+            hint="Comma-separated keywords."
+          >
+            <input
+              className={inputClass}
+              value={productForm.seo?.keywords || ''}
+              onChange={(e) =>
+                updateNestedProduct(
+                  'seo',
+                  'keywords',
+                  e.target.value
+                )
+              }
+              placeholder="alumina crucible, high alumina crucible, ceramic crucible, 99.8 alumina"
+            />
+          </ProductField>
+        </div>
+      </ProductSection>
+
+      {/* RELATED */}
+      <ProductSection
+        id="related"
+        title="Related Products"
+        description="Connect complementary products for cross-selling."
+        open={sectionOpen('related')}
+        onToggle={toggleSection}
+      >
+        <select
+          className={inputClass}
+          value=""
+          onChange={(e) =>
+            addRelatedProduct(e.target.value)
+          }
+        >
+          <option value="">Add related product...</option>
+          {products
+            .filter(
+              (product) =>
+                String(product._id) !==
+                  String(editingProduct?._id) &&
+                !safeArray(
+                  productForm.relatedProducts
+                ).some(
+                  (id) =>
+                    String(id) ===
+                    String(product._id)
+                )
+            )
+            .map((product) => (
+              <option
+                key={product._id}
+                value={product._id}
+              >
+                {product.name} — {product.sku}
+              </option>
+            ))}
+        </select>
+
+        <div className="flex flex-wrap gap-2 mt-4">
+          {safeArray(productForm.relatedProducts).map(
+            (id) => {
+              const related = products.find(
+                (product) =>
+                  String(product._id) ===
+                  String(id)
+              );
+
+              return (
+                <div
+                  key={id}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800"
+                >
+                  <span className="text-xs text-slate-300">
+                    {related?.name || id}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      removeRelatedProduct(id)
+                    }
+                    className="text-rose-400 hover:text-rose-300"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              );
+            }
+          )}
+        </div>
+      </ProductSection>
+
+      {/* METADATA */}
+      <ProductSection
+        id="metadata"
+        title="Advanced Metadata"
+        description="Optional JSON storage for future fields without changing this component."
+        open={sectionOpen('metadata')}
+        onToggle={toggleSection}
+      >
+        <div className="rounded-xl border border-amber-500/10 bg-amber-500/5 p-4 mb-4">
+          <div className="text-xs font-semibold text-amber-300">
+            Advanced / developer field
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Use valid JSON only. Normal product data should be entered in the
+            sections above.
+          </p>
+        </div>
+
+        <textarea
+          className={`${textareaClass} min-h-[240px] font-mono text-xs`}
+          value={metadataText}
+          onChange={(e) => setMetadataText(e.target.value)}
+          placeholder='{"brand":"","countryOfOrigin":"","customField":""}'
+        />
+      </ProductSection>
+
+      {/* SAVE BAR */}
+      <div className="sticky bottom-4 z-20 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-2xl">
+        <div>
+          <div className="font-semibold text-white">
+            {editingProduct ? 'Update Product' : 'Create Product'}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            All configured product data will be sent through the existing
+            AdminPage API flow.
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm font-medium"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={saving || uploading}
+            className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white text-sm font-semibold transition"
+          >
+            {saving ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="mr-2 animate-spin"
+                />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save size={16} className="mr-2" />
+                {editingProduct
+                  ? 'Update Product'
+                  : 'Create Product'}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+};
+
 const AdminPage = () => {
   const navigate = useNavigate();
 
@@ -253,6 +2136,7 @@ const AdminPage = () => {
 
   const [productSearch, setProductSearch] =
     useState('');
+    const [siteContent, setSiteContent] = useState({});
 
   const [expandedSections, setExpandedSections] =
     useState({
@@ -265,8 +2149,12 @@ const AdminPage = () => {
       content: true,
       seo: true,
       metadata: false,
-      related: false
+      related: false,
+      'cms-about': true,
+      'cms-contact': false,
+      'cms-faqs': false
     });
+    
 
   const [metadataText, setMetadataText] =
     useState('{}');
@@ -304,8 +2192,67 @@ const AdminPage = () => {
     await Promise.all([
       fetchProducts(),
       fetchCategories(),
-      fetchCurrencies()
+      fetchCurrencies(),
+      fetchSiteContent()
     ]);
+  };
+
+  const fetchSiteContent = async () => {
+    try {
+      const res = await api.get('/site-content');
+      setSiteContent(res.data?.data || {});
+    } catch (error) {
+      console.error('Fetch site content error:', error);
+    }
+  };
+
+  const updateSiteContent = (section, field, value) => {
+    setSiteContent((prev) => ({
+      ...prev,
+      [section]: {
+        ...(prev[section] || {}),
+        [field]: value
+      }
+    }));
+  };
+
+  const addFaq = () => {
+    setSiteContent((prev) => ({
+      ...prev,
+      faqs: [
+        ...(prev.faqs || []),
+        { question: '', answer: '' }
+      ]
+    }));
+  };
+
+  const updateFaq = (index, field, value) => {
+    setSiteContent((prev) => {
+      const newFaqs = [...(prev.faqs || [])];
+      newFaqs[index] = { ...newFaqs[index], [field]: value };
+      return { ...prev, faqs: newFaqs };
+    });
+  };
+
+  const removeFaq = (index) => {
+    setSiteContent((prev) => ({
+      ...prev,
+      faqs: (prev.faqs || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleSaveSiteContent = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.put('/site-content', siteContent, getAuthConfig());
+      alert('Site content successfully updated and published!');
+    } catch (err) {
+      console.error('Save site content error:', err);
+      alert('Failed to update site content.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   /*
@@ -644,7 +2591,7 @@ const AdminPage = () => {
       };
 
       if (editingCategory?._id) {
-        await api.put(
+        await api.patch(
           `${API_BASE_URL}/categories/${editingCategory._id}`,
           payload,
           getAuthConfig()
@@ -1669,6 +3616,29 @@ const AdminPage = () => {
 
     event.target.value = '';
   };
+const handleToggleArchive = async (id) => {
+  try {
+    // यहाँ {} खाली डेटा है और getAuthConfig() टोकन भेज रहा है
+    await api.patch(`${API_BASE_URL}/products/${id}/archive`, {}, getAuthConfig());
+    await fetchProducts(); 
+  } catch (error) {
+    console.error("Archive status update failed:", error);
+    alert(error.response?.data?.message || "Failed to update archive status");
+  }
+};
+
+const handlePermanentDelete = async (id) => {
+  if (!window.confirm("Warning: This will permanently delete the product. Are you sure?")) return;
+  
+  try {
+    // यहाँ getAuthConfig() टोकन भेज रहा है
+    await api.delete(`${API_BASE_URL}/products/${id}`, getAuthConfig());
+    await fetchProducts(); 
+  } catch (error) {
+    console.error("Permanent delete failed:", error);
+    alert(error.response?.data?.message || "Failed to permanently delete product");
+  }
+};
 
   /*
    * =========================================================
@@ -1727,7 +3697,7 @@ const AdminPage = () => {
           {}
         );
 
-      const currencyPricing =
+ const currencyPricing =
         Object.entries(productForm.currencyPricing || {}).reduce(
           (result, [code, config]) => {
             const normalizedCode = String(code).trim().toUpperCase();
@@ -1739,16 +3709,16 @@ const AdminPage = () => {
               config?.overridePrice ??
               config?.price
             );
+            const validOverride = Number.isFinite(overridePrice) && overridePrice >= 0 ? overridePrice : null;
+
             result[normalizedCode] = {
               mode,
               multiplier:
                 Number.isFinite(multiplier) && multiplier >= 0
                   ? multiplier
                   : 1,
-              overridePrice:
-                Number.isFinite(overridePrice) && overridePrice >= 0
-                  ? overridePrice
-                  : null,
+              price: validOverride,          // <--- Backend schema field
+              overridePrice: validOverride,  // <--- Frontend UI field
               enabled:
                 config?.enabled !== false
             };
@@ -1757,138 +3727,42 @@ const AdminPage = () => {
           {}
         );
 
-      const payload = {
+const payload = {
         ...productForm,
 
-        sku:
-          String(
-            productForm.sku ||
-              ''
-          )
-            .trim()
-            .toUpperCase(),
-
-        name:
-          String(
-            productForm.name ||
-              ''
-          ).trim(),
-
-        categoryId:
-          productForm.categoryId ||
-          null,
-
-        subcategoryId:
-          productForm.subcategoryId ||
-          null,
-
-        category:
-          productForm.category ||
-          '',
-
-        subcategory:
-          productForm.subcategory ||
-          '',
-
-        price:
-          numberOrZero(
-            productForm.price
-          ),
-
-        baseCurrency:
-          String(
-            productForm.baseCurrency ||
-              'INR'
-          )
-            .trim()
-            .toUpperCase(),
+        sku: String(productForm.sku || '').trim().toUpperCase(),
+        name: String(productForm.name || '').trim(),
+        categoryId: productForm.categoryId || null,
+        subcategoryId: productForm.subcategoryId || null,
+        category: productForm.category || '',
+        subcategory: productForm.subcategory || '',
+        price: numberOrZero(productForm.price),
+        baseCurrency: String(productForm.baseCurrency || 'INR').trim().toUpperCase(),
 
         currencyPrices,
-
+        
+        // 👇 1. Top-Level Save
         currencyPricing,
 
         pricing: {
-          pricingMode:
-            productForm.pricing
-              ?.pricingMode ||
-            'base',
+          pricingMode: productForm.pricing?.pricingMode || 'base',
+          allowCurrencyConversion: productForm.pricing?.allowCurrencyConversion !== false,
+          allowQuantityPricing: Boolean(productForm.pricing?.allowQuantityPricing),
+          
+          // 👇 2. Nested Redundancy Save (Double Safety)
+          currencyPricing: currencyPricing,
 
-          allowCurrencyConversion:
-            productForm.pricing
-              ?.allowCurrencyConversion !==
-            false,
-
-          allowQuantityPricing:
-            Boolean(
-              productForm.pricing
-                ?.allowQuantityPricing
-            ),
-
-          quantityTiers:
-            safeArray(
-              productForm.pricing
-                ?.quantityTiers
-            )
-              .map(
-                (tier) => ({
-                  minQuantity:
-                    integerOr(
-                      tier.minQuantity,
-                      1
-                    ),
-
-                  maxQuantity:
-                    tier.maxQuantity ===
-                      '' ||
-                    tier.maxQuantity ===
-                      null ||
-                    tier.maxQuantity ===
-                      undefined
-                      ? null
-                      : integerOr(
-                          tier.maxQuantity,
-                          null
-                        ),
-
-                  price:
-                    numberOrZero(
-                      tier.price
-                    ),
-
-                  currency:
-                    String(
-                      tier.currency ||
-                        productForm.baseCurrency ||
-                        'INR'
-                    )
-                      .trim()
-                      .toUpperCase()
-                })
-              )
-              .filter(
-                (tier) =>
-                  tier.minQuantity >
-                    0 &&
-                  tier.price >= 0
-              )
+          quantityTiers: safeArray(productForm.pricing?.quantityTiers).map((tier) => ({
+            minQuantity: integerOr(tier.minQuantity, 1),
+            maxQuantity: tier.maxQuantity === '' || tier.maxQuantity === null || tier.maxQuantity === undefined ? null : integerOr(tier.maxQuantity, null),
+            price: numberOrZero(tier.price),
+            currency: String(tier.currency || productForm.baseCurrency || 'INR').trim().toUpperCase()
+          })).filter((tier) => tier.minQuantity > 0 && tier.price >= 0)
         },
 
-        moq:
-          Math.max(
-            1,
-            integerOr(
-              productForm.moq,
-              1
-            )
-          ),
-
-        stock:
-          Math.max(
-            0,
-            numberOrZero(
-              productForm.stock
-            )
-          ),
+        moq: Math.max(1, integerOr(productForm.moq, 1)),
+        stock: Math.max(0, numberOrZero(productForm.stock)),
+        // ... (बाकी का कोड सेम रहेगा: specifications, variants, images etc.)
 
         specifications:
           safeArray(
@@ -2625,6 +4499,26 @@ const AdminPage = () => {
               Categories
             </button>
 
+            <button
+              onClick={() =>
+                setActiveTab(
+                  'cms'
+                )
+              }
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm ${
+                activeTab ===
+                'cms'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-400 hover:bg-slate-800'
+              }`}
+            >
+              <FileText
+                size={18}
+              />
+
+              Page Content
+            </button>
+
             <Link
               to="/admin/inquiries"
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-emerald-400 hover:bg-slate-800 mt-4"
@@ -2653,6 +4547,137 @@ const AdminPage = () => {
       ====================================================== */}
 
       <main className="flex-1 p-8 overflow-y-auto">
+
+        {/* ===================================================
+            CMS (PAGE CONTENT)
+        ==================================================== */}
+
+        {activeTab === 'cms' && (
+          <div className="space-y-6 max-w-6xl">
+            <div>
+              <h1 className="text-2xl font-bold text-white">
+                Page Content (CMS)
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Manage dynamic text and data for all public pages.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveSiteContent} className="space-y-6">
+              
+              {/* About Us Page CMS */}
+              <Section id="cms-about" open={expandedSections["cms-about"] ?? true} onToggle={toggleSection} title="About Us Page">
+                <Field label="Intro Text (Leave empty to use default premium text)">
+                  <textarea 
+                    className={textareaClass} 
+                    value={siteContent?.aboutUs?.introText || ''} 
+                    onChange={(e) => updateSiteContent('aboutUs', 'introText', e.target.value)} 
+                    placeholder="Bansal Scientific & Ceramic Industry is a leading Indian manufacturer..."
+                  />
+                </Field>
+              </Section>
+
+              {/* Contact Information CMS */}
+              <Section id="cms-contact" open={expandedSections["cms-contact"] ?? true} onToggle={toggleSection} title="Contact Information">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Field label="Sales Email">
+                    <input 
+                      className={inputClass} 
+                      value={siteContent?.contact?.salesEmail || ''} 
+                      onChange={(e) => updateSiteContent('contact', 'salesEmail', e.target.value)} 
+                      placeholder="sales@bansalscientific.com"
+                    />
+                  </Field>
+                  <Field label="Phone / WhatsApp">
+                    <input 
+                      className={inputClass} 
+                      value={siteContent?.contact?.phone || ''} 
+                      onChange={(e) => updateSiteContent('contact', 'phone', e.target.value)} 
+                      placeholder="+91-9149062163"
+                    />
+                  </Field>
+                  <Field label="Address">
+                    <input 
+                      className={inputClass} 
+                      value={siteContent?.contact?.address || ''} 
+                      onChange={(e) => updateSiteContent('contact', 'address', e.target.value)} 
+                      placeholder="712, City Station Road, Khurja..."
+                    />
+                  </Field>
+                  <Field label="Opening Hours">
+                    <input 
+                      className={inputClass} 
+                      value={siteContent?.contact?.openingHours || ''} 
+                      onChange={(e) => updateSiteContent('contact', 'openingHours', e.target.value)} 
+                      placeholder="Mon-Sat 10:00-18:00"
+                    />
+                  </Field>
+                </div>
+              </Section>
+
+              {/* FAQs CMS */}
+              <Section id="cms-faqs" open={expandedSections["cms-faqs"] ?? true} onToggle={toggleSection} title="Frequently Asked Questions (FAQs)">
+                <div className="flex justify-end mb-4">
+                  <button type="button" onClick={addFaq} className="px-3 py-2 rounded-lg bg-blue-600 text-sm font-semibold">
+                    <Plus size={14} className="inline mr-1" /> Add FAQ
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  {(siteContent?.faqs || []).map((faq, index) => (
+                    <div key={index} className="bg-slate-950 border border-slate-800 p-4 rounded-xl flex gap-4">
+                      <div className="flex-1 space-y-3">
+                        <input 
+                          className={inputClass} 
+                          placeholder="Question?" 
+                          value={faq.question} 
+                          onChange={(e) => updateFaq(index, 'question', e.target.value)} 
+                        />
+                        <textarea 
+                          className={textareaClass} 
+                          placeholder="Answer..." 
+                          value={faq.answer} 
+                          onChange={(e) => updateFaq(index, 'answer', e.target.value)} 
+                        />
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => removeFaq(index)} 
+                        className="text-rose-400 p-2 h-fit hover:bg-rose-500/10 rounded-lg transition"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {(siteContent?.faqs || []).length === 0 && (
+                    <p className="text-sm text-slate-500">No custom FAQs defined. Default FAQs will be shown.</p>
+                  )}
+                </div>
+              </Section>
+
+              {/* Sticky Save Button for CMS */}
+              <div className="sticky bottom-4 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-2xl z-50">
+                <div>
+                  <div className="font-semibold text-white">Save Site Content</div>
+                  <div className="text-xs text-slate-500">Publish your site content updates instantly.</div>
+                </div>
+                <button 
+                  type="submit" 
+                  disabled={saving} 
+                  className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 font-semibold text-white transition"
+                >
+                  {saving ? (
+                    <><Loader2 size={16} className="inline animate-spin mr-2" /> Saving...</>
+                  ) : (
+                    <><Save size={16} className="inline mr-2" /> Publish Content</>
+                  )}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        )}
+
         {/* ===================================================
             PRODUCTS LIST
         ==================================================== */}
@@ -2885,20 +4910,29 @@ const AdminPage = () => {
                                   />
                                 </button>
 
-                                <button
-                                  onClick={() =>
-                                    handleDeleteProduct(
-                                      product._id
-                                    )
-                                  }
-                                  className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white"
-                                >
-                                  <Trash2
-                                    size={
-                                      16
-                                    }
-                                  />
-                                </button>
+                                <div className="flex items-center gap-2">
+  {/* Archive / Unarchive Button */}
+  <button
+    onClick={() => handleToggleArchive(product._id)}
+    title={product.archived ? "Unarchive Product" : "Archive Product"}
+    className={`p-2 rounded-lg transition-colors ${
+      product.archived 
+        ? "bg-slate-100 text-slate-600 hover:bg-slate-200" 
+        : "bg-orange-50 text-orange-600 hover:bg-orange-100"
+    }`}
+  >
+    {product.archived ? <ArchiveRestore size={18} /> : <Archive size={18} />}
+  </button>
+
+  {/* Permanent Delete Button */}
+  <button
+    onClick={() => handlePermanentDelete(product._id)}
+    title="Permanently Delete"
+    className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+  >
+    <Trash2 size={18} />
+  </button>
+</div>
                               </div>
                             </td>
                           </tr>
@@ -3459,1802 +5493,83 @@ const AdminPage = () => {
             ADD / EDIT PRODUCT
         ==================================================== */}
 
-        {activeTab ===
-          'add-product' && (
-          <form
+        {activeTab === 'add-product' && (
+          <ProductAdminForm
+            editingProduct={editingProduct}
+            productForm={productForm}
+            products={products}
+            rootCategories={rootCategories}
+            selectedSubcategories={selectedSubcategories}
+            activeCurrencies={activeCurrencies}
+            saving={saving}
+            uploading={uploading}
+            expandedSections={expandedSections}
+
+            metadataText={metadataText}
+            setMetadataText={setMetadataText}
+
             onSubmit={
               editingProduct
                 ? handleUpdateProduct
                 : handleAddProduct
             }
-            className="max-w-6xl space-y-5"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold">
-                  {editingProduct
-                    ? 'Edit Product'
-                    : 'Create Product'}
-                </h1>
 
-                <p className="text-sm text-slate-500 mt-1">
-                  Every product attribute remains admin-configurable.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  resetProduct();
-                  setActiveTab(
-                    'products'
-                  );
-                }}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700"
-              >
-                Cancel
-              </button>
-            </div>
-
-            {/* BASIC */}
-
-            <Section id="basic" open={expandedSections["basic"]} onToggle={toggleSection}
-              title="Basic Product Information"
-              right={
-                <Settings2
-                  size={17}
-                  className="text-blue-400"
-                />
-              }
-            >
-              <div className="grid md:grid-cols-2 gap-4">
-                <Field label="SKU *">
-                  <input
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.sku
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'sku',
-                        e.target.value
-                      )
-                    }
-                    required
-                  />
-                </Field>
-
-                <Field label="Product Name *">
-                  <input
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.name
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'name',
-                        e.target.value
-                      )
-                    }
-                    required
-                  />
-                </Field>
-
-                <Field label="Category">
-                  <select
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.categoryId
-                    }
-                    onChange={(e) =>
-                      handleProductCategoryChange(
-                        e.target.value
-                      )
-                    }
-                  >
-                    <option value="">
-                      Select category
-                    </option>
-
-                    {rootCategories.map(
-                      (category) => (
-                        <option
-                          key={
-                            category._id
-                          }
-                          value={
-                            category._id
-                          }
-                        >
-                          {
-                            category.name
-                          }
-                        </option>
-                      )
-                    )}
-                  </select>
-                </Field>
-
-                <Field label="Subcategory">
-                  <select
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.subcategoryId
-                    }
-                    onChange={(e) =>
-                      handleProductSubcategoryChange(
-                        e.target.value
-                      )
-                    }
-                    disabled={
-                      !productForm.categoryId
-                    }
-                  >
-                    <option value="">
-                      No subcategory
-                    </option>
-
-                    {selectedSubcategories.map(
-                      (subcategory) => (
-                        <option
-                          key={
-                            subcategory._id
-                          }
-                          value={
-                            subcategory._id
-                          }
-                        >
-                          {
-                            subcategory.name
-                          }
-                        </option>
-                      )
-                    )}
-                  </select>
-                </Field>
-              </div>
-
-              <div className="grid md:grid-cols-4 gap-4 mt-4">
-                <Field label="Base Price">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.price
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'price',
-                        e.target.value
-                      )
-                    }
-                  />
-                </Field>
-
-                <Field label="Base Currency">
-                  <select
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.baseCurrency
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'baseCurrency',
-                        e.target.value
-                      )
-                    }
-                  >
-                    {activeCurrencies.map(
-                      (currency) => (
-                        <option
-                          key={
-                            currency.code
-                          }
-                          value={
-                            currency.code
-                          }
-                        >
-                          {
-                            currency.code
-                          }{' '}
-                          {currency.symbol
-                            ? `(${currency.symbol})`
-                            : ''}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </Field>
-
-                <Field label="MOQ">
-                  <input
-                    type="number"
-                    min="1"
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.moq
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'moq',
-                        e.target.value
-                      )
-                    }
-                  />
-                </Field>
-
-                <Field label="Stock">
-                  <input
-                    type="number"
-                    min="0"
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.stock
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'stock',
-                        e.target.value
-                      )
-                    }
-                  />
-                </Field>
-              </div>
-
-              <div className="grid md:grid-cols-4 gap-3 mt-5">
-                <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={
-                      productForm.isDirectPurchaseAllowed
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'isDirectPurchaseAllowed',
-                        e.target.checked
-                      )
-                    }
-                  />
-                  Direct Purchase
-                </label>
-
-                <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={
-                      productForm.archived
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'archived',
-                        e.target.checked
-                      )
-                    }
-                  />
-                  Archived
-                </label>
-
-                <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={
-                      productForm.featured
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'featured',
-                        e.target.checked
-                      )
-                    }
-                  />
-                  Featured
-                </label>
-
-                <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={
-                      productForm.published
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'published',
-                        e.target.checked
-                      )
-                    }
-                  />
-                  Published
-                </label>
-              </div>
-            </Section>
-
-            {/* PRICING */}
-
-            <Section id="pricing" open={expandedSections["pricing"]} onToggle={toggleSection} title="Dynamic Pricing & Currency">
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 mb-5">
-                <div className="font-semibold text-blue-950">Currency pricing formula</div>
-                <p className="text-sm text-blue-800 mt-1 leading-6">
-                  Auto = Base Price × configured FX rate. Multiplier = Base Price × FX rate × your multiplier. Override = exact selling price.
-                </p>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-4">
-                <Field label="Pricing Mode">
-                  <select className={inputClass} value={productForm.pricing?.pricingMode || 'base'} onChange={(e) => updateNestedProduct('pricing','pricingMode',e.target.value)}>
-                    <option value="base">Base Price</option>
-                    <option value="currency">Currency Overrides</option>
-                    <option value="rule">Pricing Rules</option>
-                  </select>
-                </Field>
-                <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm self-end">
-                  <input type="checkbox" checked={productForm.pricing?.allowCurrencyConversion !== false} onChange={(e) => updateNestedProduct('pricing','allowCurrencyConversion',e.target.checked)} />
-                  Allow Currency Conversion
-                </label>
-                <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm self-end">
-                  <input type="checkbox" checked={productForm.pricing?.allowQuantityPricing || false} onChange={(e) => updateNestedProduct('pricing','allowQuantityPricing',e.target.checked)} />
-                  Quantity Pricing
-                </label>
-              </div>
-
-              <div className="mt-6">
-                <h3 className="font-semibold text-slate-900">Currency Pricing Strategy</h3>
-                <p className="text-xs text-slate-500 mt-1">Configure each currency independently. No hardcoded USD/EUR pricing is required.</p>
-                <button type="button" onClick={syncCurrencyRates} className="mt-3 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">Refresh FX Rates</button>
-
-                <div className="space-y-3 mt-4">
-                  {Object.entries(productForm.currencyPricing || {})
-                    .filter(([code]) => String(code || '').trim())
-                    .map(([rawCode, config]) => {
-                    const code = String(rawCode).trim().toUpperCase();
-                    const currency = activeCurrencies.find((item) => String(item.code || '').trim().toUpperCase() === code);
-                    const rate = Number(currency?.rateFromBase);
-                    const base = numberOrZero(productForm.price);
-                    const multiplier = Number(config?.multiplier ?? 1);
-                    const autoAmount = Number.isFinite(rate) && rate > 0 ? base * rate : null;
-                    const multiplierAmount = autoAmount !== null ? autoAmount * (Number.isFinite(multiplier) ? multiplier : 1) : null;
-                    return (
-                      <div key={code} className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <div className="grid lg:grid-cols-[120px_180px_1fr_1fr_auto] gap-3 items-end">
-                          <div>
-                            <div className="text-xs font-semibold text-slate-500 uppercase">Currency</div>
-                            <div className="mt-1 h-11 flex items-center px-3 rounded-xl bg-slate-100 text-slate-900 font-bold">{code} {currency?.symbol || ''}</div>
-                          </div>
-                          <Field label="Mode">
-                            <select className={inputClass} value={config?.mode || 'auto'} onChange={(e) => updateCurrencyPricing(code,'mode',e.target.value)}>
-                              <option value="auto">Auto FX Rate</option>
-                              <option value="multiplier">FX × Multiplier</option>
-                              <option value="override">Exact Override</option>
-                            </select>
-                          </Field>
-                          {config?.mode === 'override' ? (
-                            <Field label="Exact Selling Price">
-                              <input type="number" min="0" step="0.01" className={inputClass} value={config?.overridePrice ?? config?.price ?? ''} onChange={(e) => updateCurrencyPricing(code,'overridePrice',e.target.value)} placeholder={`Price in ${code}`} />
-                            </Field>
-                          ) : (
-                            <Field label="Multiplier">
-                              <input type="number" min="0" step="0.01" className={inputClass} value={config?.multiplier ?? 1} disabled={config?.mode !== 'multiplier'} onChange={(e) => updateCurrencyPricing(code,'multiplier',e.target.value)} placeholder="1.00" />
-                            </Field>
-                          )}
-                          <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 min-h-11">
-                            <div className="text-[11px] uppercase font-semibold text-slate-500">Preview</div>
-                            <div className="font-bold text-slate-900">
-                              {config?.mode === 'override' ? ((config?.overridePrice ?? config?.price) !== '' && (config?.overridePrice ?? config?.price) !== null && (config?.overridePrice ?? config?.price) !== undefined ? `${code} ${Number(config?.overridePrice ?? config?.price).toFixed(2)}` : '—') : config?.mode === 'multiplier' ? (multiplierAmount !== null ? `${code} ${multiplierAmount.toFixed(2)}` : 'Rate unavailable') : autoAmount !== null ? `${code} ${autoAmount.toFixed(2)}` : 'Rate unavailable'}
-                            </div>
-                            {Number.isFinite(rate) && rate > 0 && <div className="text-[11px] text-slate-500 mt-1">1 {productForm.baseCurrency || 'INR'} = {rate} {code}</div>}
-                          </div>
-                          <button type="button" onClick={() => removeCurrencyPricing(code)} className="h-11 px-3 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50"><Trash2 size={16} /></button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {activeCurrencies.filter((currency) => !productForm.currencyPricing?.[currency.code]).map((currency) => (
-                    <button key={currency.code} type="button" onClick={() => addCurrencyPricing(currency.code)} className="px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold">+ {currency.code}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-6 border-t border-slate-200 pt-5">
-                <h3 className="font-semibold">Legacy Exact Currency Overrides</h3>
-                <p className="text-xs text-slate-500 mt-1">Existing currencyPrices remain supported for old products.</p>
-                <div className="space-y-2 mt-3">
-                  {Object.entries(productForm.currencyPrices || {}).map(([code,value]) => (
-                    <div key={code} className="grid grid-cols-[120px_1fr_auto] gap-2">
-                      <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5">{code}</div>
-                      <input type="number" min="0" step="0.000001" className={inputClass} value={value} onChange={(e) => updateCurrencyPrice(code,e.target.value)} />
-                      <button type="button" onClick={() => removeCurrencyPrice(code)} className="p-2 text-rose-400"><Trash2 size={16} /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Section>
-
-            {/* QUANTITY */}
-
-            <Section id="quantityPricing" open={expandedSections["quantityPricing"]} onToggle={toggleSection}
-              title="Quantity Tier Pricing"
-            >
-              <div className="flex justify-end mb-4">
-                <button
-                  type="button"
-                  onClick={
-                    addQuantityTier
-                  }
-                  className="px-3 py-2 rounded-lg bg-blue-600 text-sm"
-                >
-                  <Plus
-                    size={14}
-                    className="inline mr-1"
-                  />
-                  Add Tier
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {safeArray(
-                  productForm.pricing
-                    ?.quantityTiers
-                ).map(
-                  (
-                    tier,
-                    index
-                  ) => (
-                    <div
-                      key={
-                        index
-                      }
-                      className="grid md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2"
-                    >
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="Min qty"
-                        className={
-                          inputClass
-                        }
-                        value={
-                          tier.minQuantity
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          updateQuantityTier(
-                            index,
-                            'minQuantity',
-                            e
-                              .target
-                              .value
-                          )
-                        }
-                      />
-
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="Max qty"
-                        className={
-                          inputClass
-                        }
-                        value={
-                          tier.maxQuantity
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          updateQuantityTier(
-                            index,
-                            'maxQuantity',
-                            e
-                              .target
-                              .value
-                          )
-                        }
-                      />
-
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="Price"
-                        className={
-                          inputClass
-                        }
-                        value={
-                          tier.price
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          updateQuantityTier(
-                            index,
-                            'price',
-                            e
-                              .target
-                              .value
-                          )
-                        }
-                      />
-
-                      <select
-                        className={
-                          inputClass
-                        }
-                        value={
-                          tier.currency
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          updateQuantityTier(
-                            index,
-                            'currency',
-                            e
-                              .target
-                              .value
-                          )
-                        }
-                      >
-                        {activeCurrencies.map(
-                          (
-                            currency
-                          ) => (
-                            <option
-                              key={
-                                currency.code
-                              }
-                              value={
-                                currency.code
-                              }
-                            >
-                              {
-                                currency.code
-                              }
-                            </option>
-                          )
-                        )}
-                      </select>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removeQuantityTier(
-                            index
-                          )
-                        }
-                        className="p-2 text-rose-400"
-                      >
-                        <Trash2
-                          size={
-                            16
-                          }
-                        />
-                      </button>
-                    </div>
-                  )
-                )}
-              </div>
-            </Section>
-
-            {/* MEDIA */}
-
-            <Section id="media" open={expandedSections["media"]} onToggle={toggleSection}
-              title="Images & Documents"
-            >
-              <div className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Field label="Main Image URL">
-                    <input
-                      className={
-                        inputClass
-                      }
-                      value={
-                        productForm.imageUrl
-                      }
-                      onChange={(e) =>
-                        updateProduct(
-                          'imageUrl',
-                          e.target.value
-                        )
-                      }
-                    />
-                  </Field>
-
-                  <Field label="Upload Main Image">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={
-                        handleMainImageUpload
-                      }
-                      className={
-                        inputClass
-                      }
-                    />
-                  </Field>
-                </div>
-
-                {productForm.imageUrl && (
-                  <img
-                    src={
-                      productForm.imageUrl
-                    }
-                    alt={
-                      productForm.name
-                    }
-                    className="w-32 h-32 object-cover rounded-xl border border-slate-800"
-                  />
-                )}
-
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold">
-                      Product Gallery
-                    </h3>
-
-                    <button
-                      type="button"
-                      onClick={
-                        addImage
-                      }
-                      className="px-3 py-2 rounded-lg bg-blue-600 text-sm"
-                    >
-                      <Plus
-                        size={14}
-                        className="inline mr-1"
-                      />
-                      Add Image
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {safeArray(
-                      productForm.images
-                    ).map(
-                      (
-                        image,
-                        index
-                      ) => (
-                        <div
-                          key={
-                            index
-                          }
-                          className="grid md:grid-cols-[1fr_1fr_100px_auto_auto] gap-2 items-center"
-                        >
-                          <input
-                            className={
-                              inputClass
-                            }
-                            placeholder="Image URL"
-                            value={
-                              image.url
-                            }
-                            onChange={(
-                              e
-                            ) =>
-                              updateImage(
-                                index,
-                                'url',
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                          />
-
-                          <input
-                            className={
-                              inputClass
-                            }
-                            placeholder="Alt text"
-                            value={
-                              image.alt
-                            }
-                            onChange={(
-                              e
-                            ) =>
-                              updateImage(
-                                index,
-                                'alt',
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                          />
-
-                          <input
-                            type="number"
-                            className={
-                              inputClass
-                            }
-                            value={
-                              image.sortOrder
-                            }
-                            onChange={(
-                              e
-                            ) =>
-                              updateImage(
-                                index,
-                                'sortOrder',
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                          />
-
-                          <label className="text-xs flex items-center gap-1">
-                            <input
-                              type="checkbox"
-                              checked={
-                                image.isPrimary
-                              }
-                              onChange={(
-                                e
-                              ) =>
-                                updateImage(
-                                  index,
-                                  'isPrimary',
-                                  e
-                                    .target
-                                    .checked
-                                )
-                              }
-                            />
-                            Primary
-                          </label>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeImage(
-                                index
-                              )
-                            }
-                            className="p-2 text-rose-400"
-                          >
-                            <Trash2
-                              size={
-                                16
-                              }
-                            />
-                          </button>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold">
-                      Documents
-                    </h3>
-
-                    <button
-                      type="button"
-                      onClick={
-                        addDocument
-                      }
-                      className="px-3 py-2 rounded-lg bg-blue-600 text-sm"
-                    >
-                      <Plus
-                        size={14}
-                        className="inline mr-1"
-                      />
-                      Add Document
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {safeArray(
-                      productForm.documents
-                    ).map(
-                      (
-                        document,
-                        index
-                      ) => (
-                        <div
-                          key={
-                            index
-                          }
-                          className="grid md:grid-cols-[1fr_2fr_1fr_auto] gap-2"
-                        >
-                          <input
-                            className={
-                              inputClass
-                            }
-                            placeholder="Document name"
-                            value={
-                              document.name
-                            }
-                            onChange={(
-                              e
-                            ) =>
-                              updateDocument(
-                                index,
-                                'name',
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                          />
-
-                          <input
-                            className={
-                              inputClass
-                            }
-                            placeholder="Document URL"
-                            value={
-                              document.url
-                            }
-                            onChange={(
-                              e
-                            ) =>
-                              updateDocument(
-                                index,
-                                'url',
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                          />
-
-                          <input
-                            className={
-                              inputClass
-                            }
-                            placeholder="PDF / Datasheet / Manual"
-                            value={
-                              document.type
-                            }
-                            onChange={(
-                              e
-                            ) =>
-                              updateDocument(
-                                index,
-                                'type',
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeDocument(
-                                index
-                              )
-                            }
-                            className="p-2 text-rose-400"
-                          >
-                            <Trash2
-                              size={
-                                16
-                              }
-                            />
-                          </button>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Section>
-
-            {/* SPECS */}
-
-            <Section id="specifications" open={expandedSections["specifications"]} onToggle={toggleSection}
-              title="Dynamic Specifications"
-            >
-              <div className="flex justify-end mb-4">
-                <button
-                  type="button"
-                  onClick={
-                    addSpecification
-                  }
-                  className="px-3 py-2 rounded-lg bg-blue-600 text-sm"
-                >
-                  <Plus
-                    size={14}
-                    className="inline mr-1"
-                  />
-                  Add Specification
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {safeArray(
-                  productForm.specifications
-                ).map(
-                  (
-                    spec,
-                    index
-                  ) => (
-                    <div
-                      key={
-                        index
-                      }
-                      className="grid md:grid-cols-[1fr_2fr_auto] gap-2"
-                    >
-                      <input
-                        className={
-                          inputClass
-                        }
-                        placeholder="Specification name"
-                        value={
-                          spec.name
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          updateSpecification(
-                            index,
-                            'name',
-                            e
-                              .target
-                              .value
-                          )
-                        }
-                      />
-
-                      <input
-                        className={
-                          inputClass
-                        }
-                        placeholder="Specification value"
-                        value={
-                          spec.value
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          updateSpecification(
-                            index,
-                            'value',
-                            e
-                              .target
-                              .value
-                          )
-                        }
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removeSpecification(
-                            index
-                          )
-                        }
-                        className="p-2 text-rose-400"
-                      >
-                        <Trash2
-                          size={
-                            16
-                          }
-                        />
-                      </button>
-                    </div>
-                  )
-                )}
-
-                {safeArray(
-                  productForm.specifications
-                ).length ===
-                  0 && (
-                  <p className="text-sm text-slate-500">
-                    No specifications. Add any fields required for this product.
-                  </p>
-                )}
-              </div>
-            </Section>
-
-            {/* VARIANTS */}
-
-            <Section id="variants" open={expandedSections["variants"]} onToggle={toggleSection}
-              title="Dynamic Variants & Options"
-            >
-              <div className="flex justify-end mb-4">
-                <button
-                  type="button"
-                  onClick={
-                    addVariant
-                  }
-                  className="px-3 py-2 rounded-lg bg-blue-600 text-sm"
-                >
-                  <Plus
-                    size={14}
-                    className="inline mr-1"
-                  />
-                  Add Variant
-                </button>
-              </div>
-
-              <div className="space-y-5">
-                {safeArray(
-                  productForm.variants
-                ).map(
-                  (
-                    variant,
-                    index
-                  ) => (
-                    <div
-                      key={
-                        index
-                      }
-                      className="border border-slate-800 rounded-xl p-4 space-y-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold">
-                          Variant #
-                          {index +
-                            1}
-                        </h3>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            removeVariant(
-                              index
-                            )
-                          }
-                          className="text-rose-400"
-                        >
-                          <Trash2
-                            size={
-                              16
-                            }
-                          />
-                        </button>
-                      </div>
-
-                      <div className="grid md:grid-cols-4 gap-3">
-                        <input
-                          className={
-                            inputClass
-                          }
-                          placeholder="Variant name"
-                          value={
-                            variant.name
-                          }
-                          onChange={(
-                            e
-                          ) =>
-                            updateVariant(
-                              index,
-                              'name',
-                              e
-                                .target
-                                .value
-                            )
-                          }
-                        />
-
-                        <input
-                          className={
-                            inputClass
-                          }
-                          placeholder="Variant SKU"
-                          value={
-                            variant.sku
-                          }
-                          onChange={(
-                            e
-                          ) =>
-                            updateVariant(
-                              index,
-                              'sku',
-                              e
-                                .target
-                                .value
-                            )
-                          }
-                        />
-
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className={
-                            inputClass
-                          }
-                          placeholder="Variant price"
-                          value={
-                            variant.price
-                          }
-                          onChange={(
-                            e
-                          ) =>
-                            updateVariant(
-                              index,
-                              'price',
-                              e
-                                .target
-                                .value
-                            )
-                          }
-                        />
-
-                        <input
-                          type="number"
-                          min="0"
-                          className={
-                            inputClass
-                          }
-                          placeholder="Variant stock"
-                          value={
-                            variant.stock
-                          }
-                          onChange={(
-                            e
-                          ) =>
-                            updateVariant(
-                              index,
-                              'stock',
-                              e
-                                .target
-                                .value
-                            )
-                          }
-                        />
-                      </div>
-
-                      <input
-                        className={
-                          inputClass
-                        }
-                        placeholder="Variant image URL"
-                        value={
-                          variant.imageUrl ||
-                          ''
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          updateVariant(
-                            index,
-                            'imageUrl',
-                            e
-                              .target
-                              .value
-                          )
-                        }
-                      />
-
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-semibold">
-                            Variant Options
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              addVariantAttribute(
-                                index
-                              )
-                            }
-                            className="text-xs text-blue-400"
-                          >
-                            + Add Option
-                          </button>
-                        </div>
-
-                        <div className="space-y-2">
-                          {Object.entries(
-                            variant.attributes ||
-                              {}
-                          ).map(
-                            ([
-                              key,
-                              value
-                            ]) => (
-                              <div
-                                key={
-                                  key
-                                }
-                                className="grid grid-cols-[1fr_1fr_auto] gap-2"
-                              >
-                                <input
-                                  className={
-                                    inputClass
-                                  }
-                                  placeholder="Option name"
-                                  value={
-                                    key
-                                  }
-                                  onChange={(
-                                    e
-                                  ) =>
-                                    updateVariantAttribute(
-                                      index,
-                                      key,
-                                      e
-                                        .target
-                                        .value,
-                                      value
-                                    )
-                                  }
-                                />
-
-                                <input
-                                  className={
-                                    inputClass
-                                  }
-                                  placeholder="Option value"
-                                  value={
-                                    value
-                                  }
-                                  onChange={(
-                                    e
-                                  ) =>
-                                    updateVariantAttribute(
-                                      index,
-                                      key,
-                                      key,
-                                      e
-                                        .target
-                                        .value
-                                    )
-                                  }
-                                />
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    removeVariantAttribute(
-                                      index,
-                                      key
-                                    )
-                                  }
-                                  className="p-2 text-rose-400"
-                                >
-                                  <Trash2
-                                    size={
-                                      16
-                                    }
-                                  />
-                                </button>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </div>
-
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={
-                            variant.isActive !==
-                            false
-                          }
-                          onChange={(
-                            e
-                          ) =>
-                            updateVariant(
-                              index,
-                              'isActive',
-                              e
-                                .target
-                                .checked
-                            )
-                          }
-                        />
-                        Variant Active
-                      </label>
-                    </div>
-                  )
-                )}
-
-                {safeArray(
-                  productForm.variants
-                ).length ===
-                  0 && (
-                  <p className="text-sm text-slate-500">
-                    No variants configured.
-                  </p>
-                )}
-              </div>
-            </Section>
-
-            {/* CONTENT */}
-
-            <Section id="content" open={expandedSections["content"]} onToggle={toggleSection}
-              title="Product Content"
-            >
-              <div className="space-y-5">
-                <Field label="Short Description">
-                  <textarea
-                    className={
-                      textareaClass
-                    }
-                    value={
-                      productForm.shortDescription
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'shortDescription',
-                        e.target.value
-                      )
-                    }
-                  />
-                </Field>
-
-                <Field label="Description">
-                  <textarea
-                    className={`${textareaClass} min-h-[180px]`}
-                    value={
-                      productForm.description
-                    }
-                    onChange={(e) =>
-                      updateProduct(
-                        'description',
-                        e.target.value
-                      )
-                    }
-                  />
-                </Field>
-
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold">
-                      Features
-                    </h3>
-
-                    <button
-                      type="button"
-                      onClick={
-                        addFeature
-                      }
-                      className="text-blue-400 text-sm"
-                    >
-                      + Add Feature
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {safeArray(
-                      productForm.features
-                    ).map(
-                      (
-                        feature,
-                        index
-                      ) => (
-                        <div
-                          key={
-                            index
-                          }
-                          className="flex gap-2"
-                        >
-                          <input
-                            className={
-                              inputClass
-                            }
-                            value={
-                              feature
-                            }
-                            onChange={(
-                              e
-                            ) =>
-                              updateFeature(
-                                index,
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeFeature(
-                                index
-                              )
-                            }
-                            className="p-2 text-rose-400"
-                          >
-                            <Trash2
-                              size={
-                                16
-                              }
-                            />
-                          </button>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold">
-                      Applications
-                    </h3>
-
-                    <button
-                      type="button"
-                      onClick={
-                        addApplication
-                      }
-                      className="text-blue-400 text-sm"
-                    >
-                      + Add Application
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {safeArray(
-                      productForm.applications
-                    ).map(
-                      (
-                        application,
-                        index
-                      ) => (
-                        <div
-                          key={
-                            index
-                          }
-                          className="flex gap-2"
-                        >
-                          <input
-                            className={
-                              inputClass
-                            }
-                            value={
-                              application
-                            }
-                            onChange={(
-                              e
-                            ) =>
-                              updateApplication(
-                                index,
-                                e
-                                  .target
-                                  .value
-                              )
-                            }
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeApplication(
-                                index
-                              )
-                            }
-                            className="p-2 text-rose-400"
-                          >
-                            <Trash2
-                              size={
-                                16
-                              }
-                            />
-                          </button>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Section>
-
-            {/* SEO */}
-
-            <Section id="seo" open={expandedSections["seo"]} onToggle={toggleSection}
-              title="SEO"
-            >
-              <div className="grid md:grid-cols-2 gap-4">
-                <Field label="SEO Title">
-                  <input
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.seo
-                        ?.title ||
-                      ''
-                    }
-                    onChange={(e) =>
-                      updateNestedProduct(
-                        'seo',
-                        'title',
-                        e.target.value
-                      )
-                    }
-                  />
-                </Field>
-
-                <Field label="SEO Slug">
-                  <input
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.seo
-                        ?.slug ||
-                      ''
-                    }
-                    onChange={(e) =>
-                      updateNestedProduct(
-                        'seo',
-                        'slug',
-                        e.target.value
-                      )
-                    }
-                  />
-                </Field>
-              </div>
-
-              <div className="mt-4">
-                <Field label="SEO Description">
-                  <textarea
-                    className={
-                      textareaClass
-                    }
-                    value={
-                      productForm.seo
-                        ?.description ||
-                      ''
-                    }
-                    onChange={(e) =>
-                      updateNestedProduct(
-                        'seo',
-                        'description',
-                        e.target.value
-                      )
-                    }
-                  />
-                </Field>
-              </div>
-
-              <div className="mt-4">
-                <Field label="SEO Keywords">
-                  <input
-                    className={
-                      inputClass
-                    }
-                    value={
-                      productForm.seo
-                        ?.keywords ||
-                      ''
-                    }
-                    onChange={(e) =>
-                      updateNestedProduct(
-                        'seo',
-                        'keywords',
-                        e.target.value
-                      )
-                    }
-                    placeholder="keyword 1, keyword 2, keyword 3"
-                  />
-                </Field>
-              </div>
-            </Section>
-
-            {/* RELATED */}
-
-            <Section id="related" open={expandedSections["related"]} onToggle={toggleSection}
-              title="Related Products"
-            >
-              <div className="space-y-3">
-                <select
-                  className={
-                    inputClass
-                  }
-                  value=""
-                  onChange={(e) =>
-                    addRelatedProduct(
-                      e.target.value
-                    )
-                  }
-                >
-                  <option value="">
-                    Add related product...
-                  </option>
-
-                  {products
-                    .filter(
-                      (product) =>
-                        String(
-                          product._id
-                        ) !==
-                        String(
-                          editingProduct?._id
-                        ) &&
-                        !safeArray(
-                          productForm.relatedProducts
-                        ).some(
-                          (id) =>
-                            String(
-                              id
-                            ) ===
-                            String(
-                              product._id
-                            )
-                        )
-                    )
-                    .map(
-                      (product) => (
-                        <option
-                          key={
-                            product._id
-                          }
-                          value={
-                            product._id
-                          }
-                        >
-                          {
-                            product.name
-                          }{' '}
-                          —{' '}
-                          {
-                            product.sku
-                          }
-                        </option>
-                      )
-                    )}
-                </select>
-
-                <div className="flex flex-wrap gap-2">
-                  {safeArray(
-                    productForm.relatedProducts
-                  ).map(
-                    (id) => {
-                      const related =
-                        products.find(
-                          (product) =>
-                            String(
-                              product._id
-                            ) ===
-                            String(
-                              id
-                            )
-                        );
-
-                      return (
-                        <div
-                          key={
-                            id
-                          }
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800"
-                        >
-                          <span className="text-xs">
-                            {related?.name ||
-                              id}
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeRelatedProduct(
-                                id
-                              )
-                            }
-                            className="text-rose-400"
-                          >
-                            <X
-                              size={
-                                14
-                              }
-                            />
-                          </button>
-                        </div>
-                      );
-                    }
-                  )}
-                </div>
-              </div>
-            </Section>
-
-            {/* METADATA */}
-
-            <Section id="metadata" open={expandedSections["metadata"]} onToggle={toggleSection}
-              title="Flexible Metadata"
-            >
-              <p className="text-xs text-slate-500 mb-3">
-                Future fields can be stored here without changing the Mongo schema.
-              </p>
-
-              <textarea
-                className={`${textareaClass} min-h-[220px] font-mono`}
-                value={
-                  metadataText
-                }
-                onChange={(e) =>
-                  setMetadataText(
-                    e.target.value
-                  )
-                }
-                placeholder='{"brand":"","countryOfOrigin":"","customField":""}'
-              />
-            </Section>
-
-            {/* SAVE */}
-
-            <div className="sticky bottom-4 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-2xl">
-              <div>
-                <div className="font-semibold">
-                  {editingProduct
-                    ? 'Update Product'
-                    : 'Create Product'}
-                </div>
-
-                <div className="text-xs text-slate-500">
-                  All configured dynamic data will be saved.
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetProduct();
-                    setActiveTab(
-                      'products'
-                    );
-                  }}
-                  className="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={
-                    saving ||
-                    uploading
-                  }
-                  className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 font-semibold"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2
-                        size={16}
-                        className="inline animate-spin mr-2"
-                      />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save
-                        size={16}
-                        className="inline mr-2"
-                      />
-                      {editingProduct
-                        ? 'Update Product'
-                        : 'Create Product'}
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </form>
+            onCancel={() => {
+              resetProduct();
+              setActiveTab('products');
+            }}
+
+            updateProduct={updateProduct}
+            updateNestedProduct={updateNestedProduct}
+            handleProductCategoryChange={handleProductCategoryChange}
+            handleProductSubcategoryChange={handleProductSubcategoryChange}
+
+            syncCurrencyRates={syncCurrencyRates}
+            addCurrencyPricing={addCurrencyPricing}
+            updateCurrencyPricing={updateCurrencyPricing}
+            removeCurrencyPricing={removeCurrencyPricing}
+            updateCurrencyPrice={updateCurrencyPrice}
+            removeCurrencyPrice={removeCurrencyPrice}
+
+            addQuantityTier={addQuantityTier}
+            updateQuantityTier={updateQuantityTier}
+            removeQuantityTier={removeQuantityTier}
+
+            handleMainImageUpload={handleMainImageUpload}
+            addImage={addImage}
+            updateImage={updateImage}
+            removeImage={removeImage}
+
+            addSpecification={addSpecification}
+            updateSpecification={updateSpecification}
+            removeSpecification={removeSpecification}
+
+            addVariant={addVariant}
+            updateVariant={updateVariant}
+            removeVariant={removeVariant}
+            addVariantAttribute={addVariantAttribute}
+            updateVariantAttribute={updateVariantAttribute}
+            removeVariantAttribute={removeVariantAttribute}
+
+            addFeature={addFeature}
+            updateFeature={updateFeature}
+            removeFeature={removeFeature}
+
+            addApplication={addApplication}
+            updateApplication={updateApplication}
+            removeApplication={removeApplication}
+
+            addDocument={addDocument}
+            updateDocument={updateDocument}
+            removeDocument={removeDocument}
+
+            addRelatedProduct={addRelatedProduct}
+            removeRelatedProduct={removeRelatedProduct}
+
+            toggleSection={toggleSection}
+          />
         )}
+
       </main>
     </div>
   );
