@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Phone, MapPin, ShieldCheck, MessageSquare } from 'lucide-react';
 
 const Footer = () => {
@@ -34,15 +35,10 @@ const Footer = () => {
         <div>
           <h3 className="text-white font-semibold text-sm mb-4 border-b border-slate-800 pb-2">Useful Links</h3>
           <ul className="space-y-2.5 text-xs">
-            <li>
-              <a href="#privacy" className="hover:text-blue-400 transition">Privacy Policy</a>
-            </li>
-            <li>
-              <a href="#refund" className="hover:text-blue-400 transition">Return, Cancellation & Refund Policy</a>
-            </li>
-            <li>
-              <a href="#terms" className="hover:text-blue-400 transition">Terms & Conditions</a>
-            </li>
+            <li><Link to="/about" className="hover:text-blue-400 transition">About Bansal Scientific</Link></li>
+            <li><Link to="/contact" className="hover:text-blue-400 transition">Contact & bulk enquiries</Link></li>
+            <li><Link to="/faq" className="hover:text-blue-400 transition">Frequently asked questions</Link></li>
+            <li><Link to="/technicals" className="hover:text-blue-400 transition">Technical documents</Link></li>
             <li>
               <a href="#iso" className="hover:text-blue-400 transition flex items-center gap-1.5 text-emerald-400">
                 <ShieldCheck size={14} /> ISO Certificate 9001:2015

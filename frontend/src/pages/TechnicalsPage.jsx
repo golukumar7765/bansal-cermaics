@@ -1,7 +1,9 @@
-import React from 'react';
-import { Thermometer, Database, FileText } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Thermometer, Database, Download, FileText } from 'lucide-react';
+import api from '../lib/api';
 
 const TechnicalsPage = () => {
+  const [documents, setDocuments] = useState([]);
   const specs = [
     {
       material: "High Alumina Ceramics (99.7% Al₂O₃)",
@@ -45,6 +47,12 @@ const TechnicalsPage = () => {
     }
   ];
 
+  useEffect(() => {
+    api.get('/site-content')
+      .then((response) => setDocuments((response.data?.data?.technicals || []).filter((item) => item?.title && item?.pdfUrl)))
+      .catch(() => setDocuments([]));
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans py-12 px-6">
       <div className="max-w-6xl mx-auto space-y-12">
@@ -85,6 +93,28 @@ const TechnicalsPage = () => {
             </div>
           ))}
         </div>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Downloads</p>
+              <h2 className="mt-1 text-2xl font-extrabold text-slate-900">Technical documents</h2>
+            </div>
+            <p className="text-sm text-slate-500">Product-specific files are also available on each product page.</p>
+          </div>
+          {documents.length ? (
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {documents.map((document, index) => (
+                <a key={`${document.pdfUrl}-${index}`} href={document.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4 hover:border-blue-400 hover:bg-blue-50 transition">
+                  <span className="min-w-0"><span className="block font-bold text-slate-900 truncate">{document.title}</span><span className="block mt-1 text-xs text-slate-500 line-clamp-2">{document.description || document.category || 'Technical document'}</span></span>
+                  <Download size={18} className="shrink-0 text-blue-700" />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">No general technical documents have been published yet. Use the product pages or contact us for a datasheet.</p>
+          )}
+        </section>
       </div>
     </div>
   );

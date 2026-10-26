@@ -2241,6 +2241,28 @@ const AdminPage = () => {
     }));
   };
 
+  const addTechnical = () => {
+    setSiteContent((prev) => ({
+      ...prev,
+      technicals: [...(prev.technicals || []), { title: '', description: '', pdfUrl: '', category: '' }]
+    }));
+  };
+
+  const updateTechnical = (index, field, value) => {
+    setSiteContent((prev) => {
+      const technicals = [...(prev.technicals || [])];
+      technicals[index] = { ...technicals[index], [field]: value };
+      return { ...prev, technicals };
+    });
+  };
+
+  const removeTechnical = (index) => {
+    setSiteContent((prev) => ({
+      ...prev,
+      technicals: (prev.technicals || []).filter((_, itemIndex) => itemIndex !== index)
+    }));
+  };
+
   const handleSaveSiteContent = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -2266,7 +2288,8 @@ const AdminPage = () => {
       setLoading(true);
 
       const res = await api.get(
-        `${API_BASE_URL}/products?includeArchived=true&limit=100`
+        `${API_BASE_URL}/products/admin/all?limit=100`,
+        getAuthConfig()
       );
 
       setProducts(
@@ -4567,14 +4590,32 @@ const payload = {
               
               {/* About Us Page CMS */}
               <Section id="cms-about" open={expandedSections["cms-about"] ?? true} onToggle={toggleSection} title="About Us Page">
-                <Field label="Intro Text (Leave empty to use default premium text)">
-                  <textarea 
-                    className={textareaClass} 
-                    value={siteContent?.aboutUs?.introText || ''} 
-                    onChange={(e) => updateSiteContent('aboutUs', 'introText', e.target.value)} 
-                    placeholder="Bansal Scientific & Ceramic Industry is a leading Indian manufacturer..."
-                  />
-                </Field>
+                <div className="space-y-4">
+                  <Field label="Hero heading (leave empty for default)">
+                    <input
+                      className={inputClass}
+                      value={siteContent?.aboutUs?.heading || ''}
+                      onChange={(e) => updateSiteContent('aboutUs', 'heading', e.target.value)}
+                      placeholder="Precision Ceramics for Global Innovators"
+                    />
+                  </Field>
+                  <Field label="Intro Text (Leave empty to use default premium text)">
+                    <textarea
+                      className={textareaClass}
+                      value={siteContent?.aboutUs?.introText || ''}
+                      onChange={(e) => updateSiteContent('aboutUs', 'introText', e.target.value)}
+                      placeholder="Bansal Scientific & Ceramic Industry is a leading Indian manufacturer..."
+                    />
+                  </Field>
+                  <Field label="Manufacturing video embed URL (optional)">
+                    <input
+                      className={inputClass}
+                      value={siteContent?.aboutUs?.videoUrl || ''}
+                      onChange={(e) => updateSiteContent('aboutUs', 'videoUrl', e.target.value)}
+                      placeholder="https://www.youtube.com/embed/..."
+                    />
+                  </Field>
+                </div>
               </Section>
 
               {/* Contact Information CMS */}
@@ -4610,6 +4651,14 @@ const payload = {
                       value={siteContent?.contact?.openingHours || ''} 
                       onChange={(e) => updateSiteContent('contact', 'openingHours', e.target.value)} 
                       placeholder="Mon-Sat 10:00-18:00"
+                    />
+                  </Field>
+                  <Field label="Google Maps Embed URL" className="md:col-span-2">
+                    <input
+                      className={inputClass}
+                      value={siteContent?.contact?.mapEmbedUrl || ''}
+                      onChange={(e) => updateSiteContent('contact', 'mapEmbedUrl', e.target.value)}
+                      placeholder="Paste the Google Maps embed URL (not the public share URL)"
                     />
                   </Field>
                 </div>
@@ -4652,6 +4701,25 @@ const payload = {
                   {(siteContent?.faqs || []).length === 0 && (
                     <p className="text-sm text-slate-500">No custom FAQs defined. Default FAQs will be shown.</p>
                   )}
+                </div>
+              </Section>
+
+              <Section id="cms-technicals" open={expandedSections["cms-technicals"] ?? true} onToggle={toggleSection} title="Technical documents">
+                <div className="flex justify-between items-center gap-4 mb-4">
+                  <p className="text-xs text-slate-500">Publish downloadable general datasheets and manuals. Product documents are managed with each product.</p>
+                  <button type="button" onClick={addTechnical} className="shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-sm font-semibold"><Plus size={14} className="inline mr-1" /> Add document</button>
+                </div>
+                <div className="space-y-4">
+                  {(siteContent?.technicals || []).map((document, index) => (
+                    <div key={index} className="bg-slate-950 border border-slate-800 p-4 rounded-xl grid gap-3 md:grid-cols-2">
+                      <input className={inputClass} placeholder="Document title" value={document.title || ''} onChange={(e) => updateTechnical(index, 'title', e.target.value)} />
+                      <input className={inputClass} placeholder="Category (optional)" value={document.category || ''} onChange={(e) => updateTechnical(index, 'category', e.target.value)} />
+                      <input className={`${inputClass} md:col-span-2`} placeholder="PDF URL" value={document.pdfUrl || ''} onChange={(e) => updateTechnical(index, 'pdfUrl', e.target.value)} />
+                      <textarea className={`${textareaClass} md:col-span-2`} placeholder="Short description (optional)" value={document.description || ''} onChange={(e) => updateTechnical(index, 'description', e.target.value)} />
+                      <button type="button" onClick={() => removeTechnical(index)} className="justify-self-start text-rose-400 hover:text-rose-300 text-sm font-semibold"><Trash2 size={15} className="inline mr-1" /> Remove document</button>
+                    </div>
+                  ))}
+                  {(siteContent?.technicals || []).length === 0 && <p className="text-sm text-slate-500">No general documents published.</p>}
                 </div>
               </Section>
 

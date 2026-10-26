@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const protect = require('../middleware/authMiddleware');
+const { upload } = require('../config/cloudinary');
+const { getProductPrice } = require('../services/pricingService');
 
 const router = express.Router();
 
@@ -245,6 +247,133 @@ router.put('/:id', protect, async (req, res) => {
   }
 });
 
-// KEEP YOUR EXISTING GET / DELETE ROUTES HERE...
+/* ------------------------------------------------------------------ */
+/* catalog serialization                                              */
+/* ------------------------------------------------------------------ */
+
+const withDisplayPrice = async (product, currency, quantity = 1) => {
+  const item = product?.toObject ? product.toObject() : product;
+  const requestedCurrency = str(currency || item.baseCurrency || 'INR').toUpperCase();
+
+  try {
+    const quote = await getProductPrice({
+      product: item,
+      currency: requestedCurrency,
+      quantity
+    });
+
+    return {
+      ...item,
+      displayPrice: quote.amount,
+      displayCurrency: quote.currency,
+      pricingSource: quote.source
+    };
+  } catch (error) {
+    // A catalog must remain viewable if a currency rate has not been seeded yet.
+    return {
+      ...item,
+      displayPrice: Number(item.price) || 0,
+      displayCurrency: item.baseCurrency || 'INR',
+      pricingSource: 'base-price-fallback'
+    };
+  }
+};
+
+const parseLimit = (value, fallback = 100) => {
+  const number = Math.floor(Number(value));
+  return Number.isFinite(number) ? Math.min(Math.max(number, 1), 250) : fallback;
+};
+
+const publicFilter = (query) => {
+  const filter = { archived: false, published: true };
+  if (query.storeType && ['B2B', 'B2C'].includes(String(query.storeType).toUpperCase())) {
+    filter.storeType = String(query.storeType).toUpperCase();
+  }
+  if (query.categoryId && isId(query.categoryId)) filter.categoryId = query.categoryId;
+  if (query.subcategoryId && isId(query.subcategoryId)) filter.subcategoryId = query.subcategoryId;
+  if (query.featured === 'true') filter.featured = true;
+  return filter;
+};
+
+/* Public catalog. Never expose draft or archived products here. */
+router.get('/', async (req, res) => {
+  try {
+    const products = await Product.find(publicFilter(req.query))
+      .sort({ featured: -1, createdAt: -1, name: 1 })
+      .limit(parseLimit(req.query.limit))
+      .lean();
+    const data = await Promise.all(products.map((product) =>
+      withDisplayPrice(product, req.query.currency, req.query.quantity)
+    ));
+    return res.json({ success: true, data });
+  } catch (error) {
+    return sendError(res, error, 'Get products error');
+  }
+});
+
+/* Admin catalog includes drafts and archived records. */
+router.get('/admin/all', protect, async (req, res) => {
+  try {
+    const products = await Product.find({})
+      .sort({ archived: 1, createdAt: -1, name: 1 })
+      .limit(parseLimit(req.query.limit))
+      .lean();
+    const data = await Promise.all(products.map((product) =>
+      withDisplayPrice(product, req.query.currency, req.query.quantity)
+    ));
+    return res.json({ success: true, data });
+  } catch (error) {
+    return sendError(res, error, 'Get admin products error');
+  }
+});
+
+router.post('/upload', protect, upload.single('image'), (req, res) => {
+  if (!req.file?.path) {
+    return res.status(400).json({ success: false, message: 'An image file is required.' });
+  }
+  return res.status(201).json({ success: true, imageUrl: req.file.path });
+});
+
+router.patch('/:id/archive', protect, async (req, res) => {
+  try {
+    if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product ID.');
+    const product = await Product.findById(req.params.id);
+    if (!product) throw new HttpError(404, 'Product not found.');
+    product.archived = !product.archived;
+    await product.save();
+    return res.json({ success: true, message: product.archived ? 'Product archived.' : 'Product restored.', data: product });
+  } catch (error) {
+    return sendError(res, error, 'Archive product error');
+  }
+});
+
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product ID.');
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (!product) throw new HttpError(404, 'Product not found.');
+    return res.json({ success: true, message: 'Product permanently deleted.' });
+  } catch (error) {
+    return sendError(res, error, 'Delete product error');
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  try {
+    if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product ID.');
+    const product = await Product.findOne({
+      _id: req.params.id,
+      archived: false,
+      published: true
+    }).lean();
+    if (!product) throw new HttpError(404, 'Product not found.');
+    return res.json({
+      success: true,
+      data: await withDisplayPrice(product, req.query.currency, req.query.quantity)
+    });
+  } catch (error) {
+    return sendError(res, error, 'Get product error');
+  }
+});
 
 module.exports = router;

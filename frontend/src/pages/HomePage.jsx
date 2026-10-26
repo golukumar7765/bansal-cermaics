@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../lib/api';
-import { Coffee, FlaskConical, ShieldCheck, Eye, X, ArrowRight, Package, Search } from 'lucide-react';
+import { Coffee, FlaskConical, ShieldCheck, Eye, ArrowRight, Package, Search } from 'lucide-react';
 
 const slides = [
   {
@@ -12,7 +12,6 @@ const slides = [
 ];
 
 const HomePage = () => {
-  const { categoryName, subcategoryName } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -23,8 +22,6 @@ const HomePage = () => {
   const [selectedCurrency, setSelectedCurrency] = useState(localStorage.getItem('selectedCurrency') || 'INR');
   const [sortBy, setSortBy] = useState('default');
 
-  const [activeCategory, setActiveCategory] = useState(categoryName ? decodeURIComponent(categoryName) : 'All');
-  const [selectedSubcategory, setSelectedSubcategory] = useState(subcategoryName ? decodeURIComponent(subcategoryName) : 'All');
   
   const getCleanStoreType = () => {
     const val = localStorage.getItem('storeType') || 'B2B';
@@ -290,11 +287,21 @@ const HomePage = () => {
           </Link>
 
         </div>
+
+        <div className="mt-5 max-w-2xl mx-auto relative">
+          <Search size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={`Search ${storeType === 'B2B' ? 'labware, materials or SKUs' : 'products and collections'}`}
+            className={`w-full rounded-2xl bg-white border px-12 py-4 text-sm text-slate-800 shadow-lg outline-none transition ${storeType === 'B2B' ? 'focus:border-rose-400 focus:ring-4 focus:ring-rose-100' : 'focus:border-orange-400 focus:ring-4 focus:ring-orange-100'}`}
+          />
+        </div>
       </div>
 
       {/* CATEGORIES GRID */}
       {!searchQuery ? (
-        <section className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 pt-10 sm:pt-12 pb-12 animate-in fade-in duration-500">
+        <section id="catalog-section" className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 pt-10 sm:pt-12 pb-12 animate-in fade-in duration-500">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
             <div>
               <div className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400">
@@ -375,6 +382,32 @@ const HomePage = () => {
                   </Link>
                 );
               })}
+            </div>
+          )}
+
+          {!loading && displayProducts.length > 0 && (
+            <div className="mt-14">
+              <div className="flex items-end justify-between gap-4 mb-6">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400">Ready to order</p>
+                  <h2 className="mt-1 text-2xl font-black text-slate-950 tracking-tight">Popular products</h2>
+                </div>
+                <a href="#catalog-section" className={`text-xs font-extrabold ${storeType === 'B2B' ? 'text-rose-700' : 'text-orange-700'}`}>Explore catalog ↓</a>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                {displayProducts.filter((product) => product.featured).concat(displayProducts.filter((product) => !product.featured)).slice(0, 8).map((product) => {
+                  const price = getProductPrice(product);
+                  return (
+                    <Link key={product._id} to={`${storeType === 'B2C' ? '/lifestyle' : '/scientific'}/product/${product._id}`} className="group bg-white rounded-2xl border border-slate-200 p-4 hover:-translate-y-1 hover:shadow-xl transition-all">
+                      <div className="aspect-square rounded-xl bg-slate-50 border border-slate-100 overflow-hidden p-3 flex items-center justify-center">
+                        {product.imageUrl ? <img src={product.imageUrl} alt={product.name} loading="lazy" className="w-full h-full object-contain group-hover:scale-105 transition" /> : <Package size={28} className="text-slate-300" />}
+                      </div>
+                      <h3 className="mt-4 text-sm font-extrabold text-slate-900 line-clamp-2">{product.name}</h3>
+                      <p className={`mt-2 text-sm font-black ${storeType === 'B2B' ? 'text-rose-700' : 'text-orange-700'}`}>{Number(price) > 0 ? `${getCurrencySymbol(selectedCurrency)}${formatPrice(price)}` : 'Request a quote'}</p>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           )}
         </section>
@@ -550,8 +583,6 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* CATALOG SECTION (SMOOTH SCROLL TARGET) */}
-      <div id="catalog-section"></div>
     </div>
   );
 };

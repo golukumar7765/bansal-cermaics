@@ -19,10 +19,11 @@ import {
   ChevronRight,
   UserCheck,
   Package,
-  Mail,
   PhoneCall,
   MessageSquareQuote,
   ShoppingCart,
+  Menu,
+  X,
   FlaskConical, // Added for Toggle
   Coffee // Added for Toggle
 } from 'lucide-react';
@@ -97,6 +98,8 @@ const Navbar = () => {
     setActiveCategory
   ] = useState(null);
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   // ==========================================
   // STORE TOGGLE LOGIC
   // ==========================================
@@ -127,7 +130,7 @@ const Navbar = () => {
   useEffect(() => {
     const fetchCategoryTree = async () => {
       try {
-        const res = await api.get('/categories/tree');
+        const res = await api.get('/categories/tree', { params: { storeType } });
         const tree = Array.isArray(res.data)
           ? res.data
           : res.data?.data || [];
@@ -146,7 +149,7 @@ const Navbar = () => {
     };
 
     fetchCategoryTree();
-  }, []);
+  }, [storeType]);
 
   useEffect(() => {
     const fetchCurrencies = async () => {
@@ -473,12 +476,47 @@ const Navbar = () => {
           href="https://wa.me/919149062163"
           target="_blank"
           rel="noreferrer"
-          className="hidden md:flex items-center gap-2 text-xs font-bold text-white bg-[#1a8b44] hover:bg-[#157236] px-4 py-2.5 rounded-lg transition shadow-md shadow-emerald-600/20"
+          className="hidden xl:flex items-center gap-2 text-xs font-bold text-white bg-[#1a8b44] hover:bg-[#157236] px-4 py-2.5 rounded-lg transition shadow-md shadow-emerald-600/20"
         >
           <PhoneCall size={14} />
           Direct Inquiry
         </a>
+
+        <div className="flex xl:hidden items-center gap-3">
+          <Link to="/cart" aria-label="View cart" className="relative p-2 text-slate-700">
+            <ShoppingCart size={20} />
+            {cartCount > 0 && <span className={`absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full text-white text-[9px] flex items-center justify-center font-bold ${storeType === 'B2C' ? 'bg-orange-600' : 'bg-[#1a8b44]'}`}>{cartCount}</span>}
+          </Link>
+          <button
+            type="button"
+            aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={isMobileMenuOpen}
+            onClick={() => setIsMobileMenuOpen((open) => !open)}
+            className="p-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+          >
+            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </div>
+
+      {isMobileMenuOpen && (
+        <nav className="xl:hidden border-t border-slate-200 bg-white px-6 py-4 grid grid-cols-2 gap-2 text-sm font-semibold text-slate-700">
+          {[
+            ['Home', storefrontPath],
+            [storeType === 'B2C' ? 'Shop' : 'Products', storefrontPath],
+            ['About us', '/about'],
+            ['Technical', '/technicals'],
+            ['Support', '/service-support'],
+            ['FAQs', '/faq'],
+            ['Contact', '/contact'],
+            ['Cart', '/cart']
+          ].map(([label, to]) => (
+            <Link key={label} to={to} onClick={() => setIsMobileMenuOpen(false)} className="rounded-lg px-3 py-2.5 hover:bg-slate-50 hover:text-[#1a8b44]">
+              {label}
+            </Link>
+          ))}
+        </nav>
+      )}
     </header>
   );
 };

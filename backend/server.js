@@ -81,7 +81,6 @@ app.use(
   }),
   require('./routes/paymentRoutes')
 );
-app.use('/api/site-content', siteContentRoutes);
 
 /*
  * ---------------------------------------------------------
@@ -102,6 +101,11 @@ app.use(
     extended: true
   })
 );
+
+// CMS updates are JSON requests.  This must be mounted after the body parsers
+// (the payment webhook above is the intentional exception because it needs the
+// unmodified raw body for signature verification).
+app.use('/api/site-content', siteContentRoutes);
 
 /*
  * ---------------------------------------------------------

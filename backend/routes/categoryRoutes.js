@@ -99,89 +99,70 @@ router.get(
    GET CATEGORY TREE
 ========================================================= */
 
-router.get(
-  '/tree',
-  async (req, res) => {
-    try {
-      const categories =
-        await Category.find({
-          isActive: true
-        })
-          .sort({
-            sortOrder: 1,
-            name: 1
-          })
-          .lean();
+router.get('/tree', async (req, res) => {
+  try {
+    const storeType = String(
+      req.query.storeType || 'B2B'
+    ).toUpperCase();
 
-      const map =
-        new Map();
-
-      const roots = [];
-
-      categories.forEach(
-        (category) => {
-          map.set(
-            String(
-              category._id
-            ),
-            {
-              ...category,
-              children: []
-            }
-          );
-        }
-      );
-
-      categories.forEach(
-        (category) => {
-          const current =
-            map.get(
-              String(
-                category._id
-              )
-            );
-
-          if (
-            category.parent
-          ) {
-            const parent =
-              map.get(
-                String(
-                  category.parent
-                )
-              );
-
-            if (parent) {
-              parent.children.push(
-                current
-              );
-            }
-          } else {
-            roots.push(
-              current
-            );
-          }
-        }
-      );
-
-      return res.json({
-        success: true,
-        data: roots
-      });
-    } catch (error) {
-      console.error(
-        'Category tree error:',
-        error
-      );
-
-      return res.status(500).json({
+    if (!['B2B', 'B2C'].includes(storeType)) {
+      return res.status(400).json({
         success: false,
-        message:
-          error.message
+        message: 'Invalid store type.'
       });
     }
+
+    const categories = await Category.find({
+      isActive: true,
+      storeType
+    })
+      .sort({
+        sortOrder: 1,
+        name: 1
+      })
+      .lean();
+
+    const map = new Map();
+    const roots = [];
+
+    categories.forEach((category) => {
+      map.set(String(category._id), {
+        ...category,
+        children: []
+      });
+    });
+
+    categories.forEach((category) => {
+      const current = map.get(
+        String(category._id)
+      );
+
+      if (category.parent) {
+        const parent = map.get(
+          String(category.parent)
+        );
+
+        if (parent) {
+          parent.children.push(current);
+        }
+      } else {
+        roots.push(current);
+      }
+    });
+
+    return res.json({
+      success: true,
+      data: roots
+    });
+  } catch (error) {
+    console.error('Category tree error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
-);
+});
 
 /* =========================================================
    GET SINGLE CATEGORY

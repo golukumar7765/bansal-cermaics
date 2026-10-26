@@ -5,6 +5,13 @@ import { Mail, Phone, MapPin, CheckCircle } from 'lucide-react';
 
 const ContactPage = () => {
   const [searchParams] = useSearchParams();
+  const [contact, setContact] = useState({
+    salesEmail: 'sales@bansalscientific.com',
+    phone: '+91-9149062163',
+    address: '712, City Station Road, Khurja,\nDistt. Bulandshahr-203131, INDIA',
+    openingHours: 'Mon-Sat 10:00-18:00',
+    mapEmbedUrl: 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14030.73033506161!2d77.8384992!3d28.243555!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390ca7a1c3b1e3ab%3A0x6b8f3b8b6e6f1f!2sKhurja%2C%20Uttar%20Pradesh%20203131!5e0!3m2!1sen!2sin!4v1690000000000!5m2!1sen!2sin'
+  });
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -12,8 +19,7 @@ const ContactPage = () => {
     country: 'India',
     phone: '',
     enquiryType: 'Product enquiry',
-    message: '',
-    file: null
+    message: ''
   });
 
   const [loading, setLoading] = useState(false);
@@ -30,13 +36,18 @@ const ContactPage = () => {
     }));
   }, [searchParams]);
 
+  useEffect(() => {
+    api.get('/site-content')
+      .then((response) => {
+        const saved = response.data?.data?.contact;
+        if (saved) setContact((previous) => ({ ...previous, ...saved }));
+      })
+      .catch(() => {});
+  }, []);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleFileChange = (e) => {
-    setFormData((prev) => ({ ...prev, file: e.target.files[0] }));
   };
 
   const handleSubmit = async (e) => {
@@ -93,22 +104,22 @@ const ContactPage = () => {
               <div className="space-y-4 text-sm text-slate-600">
                 <div>
                   <span className="block font-bold text-slate-900 mb-1 flex items-center gap-2"><Mail size={16} className="text-[#1a8b44]" /> Sales Email</span>
-                  <a href="mailto:sales@bansalscientific.com" className="text-blue-600 hover:underline">sales@bansalscientific.com</a>
+                  <a href={`mailto:${contact.salesEmail}`} className="text-blue-600 hover:underline">{contact.salesEmail}</a>
                 </div>
                 
                 <div>
                   <span className="block font-bold text-slate-900 mb-1 flex items-center gap-2"><Phone size={16} className="text-[#1a8b44]" /> Phone / WhatsApp</span>
-                  <span>+91-9149062163</span>
+                  <a href={`tel:${contact.phone.replace(/[^+\d]/g, '')}`} className="hover:text-slate-900">{contact.phone}</a>
                 </div>
                 
                 <div>
                   <span className="block font-bold text-slate-900 mb-1 flex items-center gap-2"><MapPin size={16} className="text-[#1a8b44]" /> Address</span>
-                  <span>712, City Station Road, Khurja,<br/>Distt. Bulandshahr-203131, INDIA</span>
+                  <span className="whitespace-pre-line">{contact.address}</span>
                 </div>
                 
                 <div>
                   <span className="block font-bold text-slate-900">Opening Hours:</span>
-                  <span>Mon-Sat 10:00-18:00</span>
+                  <span>{contact.openingHours}</span>
                 </div>
               </div>
             </div>
@@ -117,7 +128,7 @@ const ContactPage = () => {
             <div className="w-full h-[250px] bg-slate-200 rounded-sm overflow-hidden border border-slate-300">
               <iframe 
                 title="Bansal Scientific Location"
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14030.73033506161!2d77.8384992!3d28.243555!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390ca7a1c3b1e3ab%3A0x6b8f3b8b6e6f1f!2sKhurja%2C%20Uttar%20Pradesh%20203131!5e0!3m2!1sen!2sin!4v1690000000000!5m2!1sen!2sin" 
+                src={contact.mapEmbedUrl}
                 width="100%" 
                 height="100%" 
                 style={{ border: 0 }} 
@@ -195,11 +206,6 @@ const ContactPage = () => {
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Your Enquiry / Requirement *</label>
                   <textarea name="message" required rows="4" value={formData.message} onChange={handleChange} className="w-full text-sm bg-slate-50 border border-slate-300 rounded-sm p-2.5 focus:outline-none focus:border-[#1a8b44]" placeholder="Provide details like dimensions, temperature rating, etc..."></textarea>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Attachment (Optional)</label>
-                  <input type="file" onChange={handleFileChange} className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-sm file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200" />
                 </div>
 
                 <button type="submit" disabled={loading} className="mt-4 bg-[#1a8b44] hover:bg-[#157236] text-white font-bold text-sm px-8 py-3 rounded-sm transition cursor-pointer disabled:opacity-50 w-full sm:w-auto">

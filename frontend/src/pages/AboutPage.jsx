@@ -26,6 +26,8 @@ const AboutPage = () => {
 
   // Premium Fallback Texts
   const defaultIntro = "Bansal Scientific & Ceramic Industry serves laboratories, academic institutions, hospitals, research organizations, and industrial sectors across India and overseas. Years of experience in ceramic engineering and materials science have allowed us to develop one of the widest and finest ranges of laboratory ceramic wares in the country.";
+  const aboutHeading = cmsData?.aboutUs?.heading || 'Precision Ceramics for Global Innovators.';
+  const videoUrl = cmsData?.aboutUs?.videoUrl;
   
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-20 selection:bg-blue-200">
@@ -46,10 +48,7 @@ const AboutPage = () => {
             Leading Indian Manufacturer
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-7xl font-extrabold text-white tracking-tight leading-[1.1]">
-            Precision Ceramics for <br className="hidden lg:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-white">
-              Global Innovators.
-            </span>
+            {aboutHeading}
           </h1>
           <p className="mt-6 text-blue-100/80 text-base sm:text-lg max-w-2xl mx-auto lg:mx-0 leading-relaxed font-medium">
             Delivering high-performance Porcelain, 99.7% Alumina, and Agate laboratory wares engineered for the world's most demanding environments.
@@ -115,15 +114,23 @@ const AboutPage = () => {
           <div className="relative group">
             <div className="absolute -inset-2 bg-gradient-to-r from-blue-500 to-[#0b4c8c] rounded-3xl blur opacity-25 group-hover:opacity-40 transition duration-500"></div>
             <div className="relative w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700">
-              <iframe 
-                width="100%" 
-                height="100%" 
-                src="https://www.youtube.com/embed/dQw4w9WgXcQ?controls=0" 
-                title="Bansal Scientific Manufacturing Video" 
-                frameBorder="0" 
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                allowFullScreen
-              ></iframe>
+              {videoUrl ? (
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src={videoUrl}
+                  title="Bansal Scientific manufacturing video"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center gap-3 px-8 text-center text-slate-300">
+                  <Factory size={46} className="text-blue-300" />
+                  <p className="text-sm font-semibold">Manufacturing video coming soon</p>
+                  <p className="text-xs text-slate-400">Add an approved embed URL from Admin → CMS before publishing a company video.</p>
+                </div>
+              )}
             </div>
           </div>
         </section>
