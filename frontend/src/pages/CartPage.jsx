@@ -208,8 +208,23 @@ const CartPage = () => {
          * so the cart always shows the selected
          * currency's authoritative price.
          */
+        const variantId = String(oldItem.variantId || '');
+        const selectedVariant = variantId
+          ? (current.variants || []).find((variant) => String(variant._id || '') === variantId && variant.isActive !== false)
+          : null;
+        const productDisplayPrice = Number(current.displayPrice ?? current.price) || 0;
+        const productBasePrice = Number(current.price) || 0;
+        const variantBasePrice = Number(selectedVariant?.price);
+        const displayPrice = selectedVariant && Number.isFinite(variantBasePrice) && productBasePrice > 0
+          ? productDisplayPrice * (variantBasePrice / productBasePrice)
+          : productDisplayPrice;
+
         updatedCart.push({
           ...current,
+          variantId,
+          selectedVariant,
+          displayedUnitPrice: displayPrice,
+          displayPrice,
           quantity
         });
       }
@@ -316,7 +331,8 @@ const CartPage = () => {
             sum +
             (
               Number(
-                item.displayPrice ??
+                item.displayedUnitPrice ??
+                  item.displayPrice ??
                   item.price ??
                   0
               ) || 0

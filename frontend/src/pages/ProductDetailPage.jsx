@@ -14,21 +14,11 @@ import {
 
   ShoppingCart,
 
-  Package,
-
   FileText,
-
-  FlaskConical,
 
   Box,
 
-  Truck,
-
-  ShieldCheck,
-
   Settings,
-
-  Image as ImageIcon,
 
   ChevronLeft,
 
@@ -304,18 +294,6 @@ const ProductDetailPage = () => {
 
   }, [product]);
 
-  const getSpecificationIcon = (name) => {
-
-    const norm = String(name || '').toLowerCase();
-
-    if (norm.includes('material') || norm.includes('purity') || norm.includes('grade')) return FlaskConical;
-
-    if (norm.includes('weight') || norm.includes('capacity')) return Package;
-
-    return Settings;
-
-  };
-
   // =========================================================
 
   // RESOLVED PRICE USING SMART ENGINE
@@ -352,10 +330,6 @@ const ProductDetailPage = () => {
   const variants = Array.isArray(product?.variants)
     ? product.variants.filter((variant) => variant && variant.isActive !== false)
     : [];
-
-  const variantOptions = selectedVariant?.options || selectedVariant?.attributes || {};
-
-  const variantOptionEntries = Object.entries(variantOptions || {});
 
   const moq = Math.max(1, Number(selectedVariant?.moq ?? product?.moq) || 1);
 
@@ -615,7 +589,10 @@ const ProductDetailPage = () => {
 
                         )}
 
-                        <p className="mt-2 text-xs font-medium text-slate-500">{Number(variant.stock) > 0 ? `${variant.stock} available` : 'Made to order / enquiry required'}</p>
+                        <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                          <span className="font-extrabold text-blue-700">{getCurrencySymbol(selectedCurrency)}{formatPrice(resolveProductPrice(product, variant, selectedCurrency, quantity))}</span>
+                          <span className="font-medium text-slate-500">{Number(variant.stock) > 0 ? `${variant.stock} available` : 'Made to order / enquiry required'}</span>
+                        </div>
 
                       </button>
 

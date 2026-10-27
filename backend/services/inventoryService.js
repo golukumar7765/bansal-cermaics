@@ -28,6 +28,7 @@ const normalizeItems = (items = []) => {
     const quantity = Number(
       item.quantity
     );
+    const variantId = String(item.variantId || '');
 
     if (
       !mongoose.Types.ObjectId.isValid(
@@ -48,9 +49,14 @@ const normalizeItems = (items = []) => {
       );
     }
 
+    if (variantId && !mongoose.Types.ObjectId.isValid(variantId)) {
+      throw new Error('Invalid product variant ID.');
+    }
+
+    const key = `${productId}:${variantId}`;
     map.set(
-      productId,
-      (map.get(productId) || 0) +
+      key,
+      (map.get(key) || 0) +
         quantity
     );
   }
@@ -58,12 +64,23 @@ const normalizeItems = (items = []) => {
   return Array.from(
     map.entries()
   ).map(
-    ([productId, quantity]) => ({
-      productId,
-      quantity
-    })
+    ([key, quantity]) => {
+      const [productId, variantId = ''] = key.split(':');
+      return { productId, variantId, quantity };
+    }
   );
 };
+
+const stockIncrement = (item, quantity) => ({
+  stock: quantity,
+  ...(item.variantId ? { 'variants.$[selectedVariant].stock': quantity } : {})
+});
+
+const stockUpdateOptions = (item, session = null) => ({
+  new: true,
+  ...(session ? { session } : {}),
+  ...(item.variantId ? { arrayFilters: [{ 'selectedVariant._id': item.variantId }] } : {})
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -95,19 +112,11 @@ const restoreReservedItems = async (
         item.productId,
         {
           $inc: {
-            stock: Number(
-              item.quantity
-            )
+            ...stockIncrement(item, Number(item.quantity))
           }
         },
-        {
-          new: true
-        }
+        stockUpdateOptions(item, session)
       );
-
-    if (session) {
-      query.session(session);
-    }
 
     await query.exec();
   }
@@ -151,6 +160,12 @@ const reserveStock = async (
             isDirectPurchaseAllowed:
               true,
 
+            ...(item.variantId ? {
+              variants: { $elemMatch: { _id: item.variantId, isActive: { $ne: false }, stock: { $gte: item.quantity } } }
+            } : {
+              $or: [{ variants: { $exists: false } }, { variants: { $size: 0 } }]
+            }),
+
             $expr: {
               $gte: [
                 {
@@ -165,13 +180,10 @@ const reserveStock = async (
           },
           {
             $inc: {
-              stock:
-                -item.quantity
+              ...stockIncrement(item, -item.quantity)
             }
           },
-          {
-            new: true
-          }
+          stockUpdateOptions(item)
         );
 
       if (!updated) {
@@ -216,6 +228,8 @@ const reserveStock = async (
       reserved.push({
         productId:
           item.productId,
+
+        variantId: item.variantId || '',
 
         quantity:
           item.quantity
@@ -306,20 +320,11 @@ const releaseReservation =
           item.product,
           {
             $inc: {
-              stock:
-                item.quantity
+              ...stockIncrement(item, item.quantity)
             }
           },
-          {
-            new: true
-          }
+          stockUpdateOptions(item, session)
         );
-
-      if (session) {
-        productQuery.session(
-          session
-        );
-      }
 
       const product =
         await productQuery.exec();
@@ -482,20 +487,11 @@ const restoreOrderStock =
           item.product,
           {
             $inc: {
-              stock:
-                item.quantity
+              ...stockIncrement(item, item.quantity)
             }
           },
-          {
-            new: true
-          }
+          stockUpdateOptions(item, session)
         );
-
-      if (session) {
-        productQuery.session(
-          session
-        );
-      }
 
       const product =
         await productQuery.exec();

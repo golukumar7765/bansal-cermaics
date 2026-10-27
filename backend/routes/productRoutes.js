@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 
 const Product = require('../models/Product');
+const Order = require('../models/Order');
 const Category = require('../models/Category');
 const protect = require('../middleware/authMiddleware');
 const { upload } = require('../config/cloudinary');
@@ -350,6 +351,9 @@ router.patch('/:id/archive', protect, async (req, res) => {
 router.delete('/:id', protect, async (req, res) => {
   try {
     if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product ID.');
+    if (await Order.exists({ 'items.product': req.params.id })) {
+      throw new HttpError(409, 'This product is referenced by an order and cannot be permanently deleted. Archive it instead.');
+    }
     const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) throw new HttpError(404, 'Product not found.');
     return res.json({ success: true, message: 'Product permanently deleted.' });

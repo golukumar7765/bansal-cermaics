@@ -71,6 +71,7 @@ const EMPTY_CATEGORY_FIELD = {
 
 const EMPTY_CATEGORY = {
   name: '',
+  storeType: 'B2B',
   description: '',
   imageUrl: '',
   parent: '',
@@ -82,6 +83,7 @@ const EMPTY_CATEGORY = {
 const EMPTY_PRODUCT = {
   sku: '',
   name: '',
+  storeType: 'B2B',
 
   categoryId: '',
   subcategoryId: '',
@@ -372,9 +374,6 @@ const ProductAdminForm = ({
   const textareaClass =
     `${inputClass} min-h-[110px] resize-y`;
 
-  const sectionClass =
-    'bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm';
-
   const supportedCurrencyCodes = ['INR', 'USD', 'EUR', 'GBP'];
 
   const activeCurrencyList = supportedCurrencyCodes.map((code) => {
@@ -641,6 +640,20 @@ const ProductAdminForm = ({
             />
           </ProductField>
 
+          <ProductField label="Storefront" required hint="Choose where customers will see this product.">
+            <select
+              className={inputClass}
+              value={productForm.storeType || 'B2B'}
+              onChange={(e) => {
+                updateProduct('storeType', e.target.value);
+                handleProductCategoryChange('');
+              }}
+            >
+              <option value="B2B">Scientific Store (B2B)</option>
+              <option value="B2C">Lifestyle Store (B2C)</option>
+            </select>
+          </ProductField>
+
           <ProductField label="Category">
             <select
               className={inputClass}
@@ -650,7 +663,7 @@ const ProductAdminForm = ({
               }
             >
               <option value="">Select category</option>
-              {rootCategories.map((category) => (
+              {rootCategories.filter((category) => String(category.storeType || 'B2B').toUpperCase() === String(productForm.storeType || 'B2B').toUpperCase()).map((category) => (
                 <option key={category._id} value={category._id}>
                   {category.name}
                 </option>
@@ -2263,6 +2276,25 @@ const AdminPage = () => {
     }));
   };
 
+  const addSlide = () => {
+    setSiteContent((prev) => ({
+      ...prev,
+      homeSlideshow: [...(prev.homeSlideshow || []), { title: '', subtitle: '', imageUrl: '', ctaLabel: 'Explore products', ctaUrl: '/scientific', isActive: true, sortOrder: (prev.homeSlideshow || []).length }]
+    }));
+  };
+
+  const updateSlide = (index, field, value) => {
+    setSiteContent((prev) => {
+      const homeSlideshow = [...(prev.homeSlideshow || [])];
+      homeSlideshow[index] = { ...homeSlideshow[index], [field]: value };
+      return { ...prev, homeSlideshow };
+    });
+  };
+
+  const removeSlide = (index) => {
+    setSiteContent((prev) => ({ ...prev, homeSlideshow: (prev.homeSlideshow || []).filter((_, itemIndex) => itemIndex !== index) }));
+  };
+
   const handleSaveSiteContent = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -2660,6 +2692,9 @@ const AdminPage = () => {
     setCategoryForm({
       name:
         category.name || '',
+
+      storeType:
+        category.storeType || 'B2B',
 
       description:
         category.description || '',
@@ -3299,23 +3334,6 @@ const AdminPage = () => {
           }
         ];
 
-  const addCurrencyPrice = (
-    code
-  ) => {
-    setProductForm((prev) => ({
-      ...prev,
-
-      currencyPrices: {
-        ...(prev.currencyPrices || {}),
-
-        [code]:
-          prev.currencyPrices?.[
-            code
-          ] ?? ''
-      }
-    }));
-  };
-
   const updateCurrencyPrice = (
     code,
     value
@@ -3815,6 +3833,7 @@ const payload = {
             productForm.variants
           ).map(
             (variant) => ({
+              ...(variant._id ? { _id: variant._id } : {}),
               name:
                 String(
                   variant.name || ''
@@ -4287,33 +4306,6 @@ const payload = {
    * =========================================================
    */
 
-  const handleDeleteProduct = async (
-    id
-  ) => {
-    if (
-      !window.confirm(
-        'Delete/archive this product?'
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await api.delete(
-        `${API_BASE_URL}/products/${id}`,
-        getAuthConfig()
-      );
-
-      await fetchProducts();
-    } catch (error) {
-      alert(
-        error.response?.data?.message ||
-          error.message ||
-          'Unable to delete product.'
-      );
-    }
-  };
-
   /*
    * =========================================================
    * RESET
@@ -4723,6 +4715,34 @@ const payload = {
                 </div>
               </Section>
 
+              <Section id="cms-slideshow" open={expandedSections["cms-slideshow"] ?? true} onToggle={toggleSection} title="Homepage offers slideshow">
+                <div className="flex justify-between items-center gap-4 mb-4">
+                  <p className="text-xs text-slate-500">These slides rotate automatically on the homepage. Use a direct image URL from Cloudinary or your image host.</p>
+                  <button type="button" onClick={addSlide} className="shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-sm font-semibold"><Plus size={14} className="inline mr-1" /> Add slide</button>
+                </div>
+                <div className="space-y-4">
+                  {(siteContent?.homeSlideshow || []).map((slide, index) => (
+                    <div key={index} className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-3">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <input className={inputClass} placeholder="Offer title" value={slide.title || ''} onChange={(e) => updateSlide(index, 'title', e.target.value)} />
+                        <input className={inputClass} placeholder="Image URL" value={slide.imageUrl || ''} onChange={(e) => updateSlide(index, 'imageUrl', e.target.value)} />
+                      </div>
+                      <textarea className={textareaClass} placeholder="Offer subtitle" value={slide.subtitle || ''} onChange={(e) => updateSlide(index, 'subtitle', e.target.value)} />
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <input className={inputClass} placeholder="Button label" value={slide.ctaLabel || ''} onChange={(e) => updateSlide(index, 'ctaLabel', e.target.value)} />
+                        <input className={inputClass} placeholder="Button path, e.g. /lifestyle" value={slide.ctaUrl || ''} onChange={(e) => updateSlide(index, 'ctaUrl', e.target.value)} />
+                        <input type="number" className={inputClass} placeholder="Sort order" value={slide.sortOrder ?? index} onChange={(e) => updateSlide(index, 'sortOrder', e.target.value)} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={slide.isActive !== false} onChange={(e) => updateSlide(index, 'isActive', e.target.checked)} /> Published</label>
+                        <button type="button" onClick={() => removeSlide(index)} className="text-rose-400 hover:text-rose-300 text-sm font-semibold"><Trash2 size={15} className="inline mr-1" /> Remove slide</button>
+                      </div>
+                    </div>
+                  ))}
+                  {(siteContent?.homeSlideshow || []).length === 0 && <p className="text-sm text-slate-500">No custom slides yet. The homepage uses its fallback banner until you publish one.</p>}
+                </div>
+              </Section>
+
               {/* Sticky Save Button for CMS */}
               <div className="sticky bottom-4 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-2xl z-50">
                 <div>
@@ -5084,12 +5104,12 @@ const payload = {
                     value={
                       categoryForm.parent
                     }
-                    onChange={(e) =>
-                      handleCategoryChange(
-                        'parent',
-                        e.target.value
-                      )
-                    }
+                    onChange={(e) => {
+                      const parentId = e.target.value;
+                      const parentCategory = rootCategories.find((category) => String(category._id) === parentId);
+                      handleCategoryChange('parent', parentId);
+                      if (parentCategory) handleCategoryChange('storeType', parentCategory.storeType || 'B2B');
+                    }}
                   >
                     <option value="">
                       Main Category
@@ -5106,12 +5126,25 @@ const payload = {
                           }
                         >
                           {
-                            category.name
+                            `${category.name} — ${category.storeType || 'B2B'}`
                           }
                         </option>
                       )
                     )}
                   </select>
+                </Field>
+
+                <Field label="Storefront *">
+                  <select
+                    className={inputClass}
+                    value={categoryForm.storeType || 'B2B'}
+                    onChange={(e) => handleCategoryChange('storeType', e.target.value)}
+                    disabled={Boolean(categoryForm.parent)}
+                  >
+                    <option value="B2B">Scientific Store (B2B)</option>
+                    <option value="B2C">Lifestyle Store (B2C)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">Subcategories automatically use their parent storefront.</p>
                 </Field>
               </div>
 

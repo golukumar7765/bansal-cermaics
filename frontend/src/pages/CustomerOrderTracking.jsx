@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Package,
@@ -83,7 +83,7 @@ const CustomerOrderTracking = () => {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadOrder = async (silent = false) => {
+  const loadOrder = useCallback(async (silent = false) => {
     if (!orderNumber) {
       setLoading(false);
       setError('Order number is missing.');
@@ -129,11 +129,11 @@ const CustomerOrderTracking = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [orderNumber]);
 
   useEffect(() => {
     loadOrder();
-  }, [orderNumber]);
+  }, [loadOrder]);
 
   if (loading) {
     return (

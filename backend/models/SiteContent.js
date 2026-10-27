@@ -16,6 +16,18 @@ const siteContentSchema = new mongoose.Schema({
     }]
   },
 
+  // Homepage promotional slides.  The admin controls this collection so offers
+  // can be scheduled/published without a frontend deployment.
+  homeSlideshow: [{
+    title: { type: String, required: true },
+    subtitle: { type: String, default: '' },
+    imageUrl: { type: String, required: true },
+    ctaLabel: { type: String, default: 'Explore collection' },
+    ctaUrl: { type: String, default: '/scientific' },
+    isActive: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 }
+  }],
+
   // FAQs Page Data (Array of questions & answers)
   faqs: [{
     question: { type: String, required: true },

@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const { rateLimit } = require('../middleware/rateLimitMiddleware');
 
 const router =
   express.Router();
@@ -33,6 +34,29 @@ const razorpay =
     key_secret:
       process.env.RAZORPAY_KEY_SECRET
   });
+
+const checkoutRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 12, keyPrefix: 'checkout' });
+const verifyRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, keyPrefix: 'payment-verify' });
+const allowedPaymentCurrencies = new Set(
+  String(process.env.PAYMENT_ALLOWED_CURRENCIES || 'INR').split(',').map((currency) => currency.trim().toUpperCase()).filter(Boolean)
+);
+
+const checkoutTokenHash = (token) => crypto.createHash('sha256').update(String(token || '')).digest('hex');
+const newCheckoutToken = () => crypto.randomBytes(32).toString('hex');
+const checkoutTokenMatches = (storedHash, token) => {
+  const stored = Buffer.from(String(storedHash || ''), 'utf8');
+  const received = Buffer.from(checkoutTokenHash(token), 'utf8');
+  return stored.length === received.length && crypto.timingSafeEqual(stored, received);
+};
+const itemStockRestore = (item) => ({
+  stock: Number(item.quantity),
+  ...(item.variantId ? { 'variants.$[selectedVariant].stock': Number(item.quantity) } : {})
+});
+const itemStockRestoreOptions = (item, session) => ({
+  new: true,
+  session,
+  ...(item.variantId ? { arrayFilters: [{ 'selectedVariant._id': item.variantId }] } : {})
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -273,10 +297,7 @@ const verifyWebhookSignature = (
     crypto
       .createHmac(
         'sha256',
-        process.env
-          .RAZORPAY_WEBHOOK_SECRET ||
-          process.env
-            .RAZORPAY_KEY_SECRET
+        process.env.RAZORPAY_WEBHOOK_SECRET
       )
       .update(rawBody)
       .digest('hex');
@@ -561,6 +582,7 @@ const processSuccessfulPayment =
 
 router.post(
   '/create-order',
+  checkoutRateLimit,
   async (req, res) => {
     let localOrder = null;
     let reservation = null;
@@ -577,6 +599,10 @@ router.post(
       } = req.body;
 
       const orderCurrency = String(requestedCurrency || 'INR').toUpperCase();
+
+      if (!allowedPaymentCurrencies.has(orderCurrency)) {
+        return res.status(400).json({ success: false, message: `Checkout is not enabled for ${orderCurrency}.` });
+      }
 
       validateCustomer(
         customer
@@ -641,28 +667,27 @@ router.post(
           });
         }
 
+        const variantId = item.variantId && mongoose.Types.ObjectId.isValid(item.variantId)
+          ? String(item.variantId)
+          : '';
+        const itemKey = `${item.productId}:${variantId}`;
+
         itemMap.set(
-          item.productId,
+          itemKey,
           (
             itemMap.get(
-              item.productId
+              itemKey
             ) || 0
           ) + quantity
         );
       }
 
-      const normalizedItems =
-        Array.from(
-          itemMap.entries()
-        ).map(
-          ([
-            productId,
-            quantity
-          ]) => ({
-            productId,
-            quantity
-          })
-        );
+      const normalizedItems = Array.from(itemMap.entries()).map(
+        ([itemKey, quantity]) => {
+          const [productId, variantId = ''] = itemKey.split(':');
+          return { productId, variantId, quantity };
+        }
+      );
 
       const productIds =
         normalizedItems.map(
@@ -719,6 +744,14 @@ router.post(
           );
         }
 
+        const selectedVariant = cartItem.variantId
+          ? product.variants.id(cartItem.variantId)
+          : null;
+
+        if (cartItem.variantId && (!selectedVariant || selectedVariant.isActive === false)) {
+          throw new Error(`The selected variant for "${product.name}" is no longer available.`);
+        }
+
         if (
           product.isDirectPurchaseAllowed !==
           true
@@ -763,9 +796,13 @@ router.post(
            *
            * Quantity pricing and pricing rules are also applied here.
            */
+          const pricedProduct = selectedVariant
+            ? { ...product.toObject(), price: Number(selectedVariant.price) || 0 }
+            : product;
+
           resolved =
             await getProductPrice({
-              product,
+              product: pricedProduct,
               currency:
                 orderCurrency,
               quantity
@@ -806,7 +843,16 @@ router.post(
             product.sku,
 
           name:
-            product.name,
+            selectedVariant?.name ? `${product.name} — ${selectedVariant.name}` : product.name,
+
+          variantId:
+            selectedVariant?._id || null,
+
+          variantName:
+            selectedVariant?.name || '',
+
+          variantAttributes:
+            selectedVariant?.attributes || {},
 
           imageUrl:
             product.imageUrl ||
@@ -881,6 +927,7 @@ router.post(
 
       const orderNumber =
         generateOrderNumber();
+      const checkoutToken = newCheckoutToken();
 
       const normalizedShipping = {
         fullName:
@@ -1040,6 +1087,8 @@ router.post(
               customerNote || ''
             ).trim(),
 
+          checkoutAccessTokenHash: checkoutTokenHash(checkoutToken),
+
           payment: {
             provider:
               'Razorpay',
@@ -1133,8 +1182,8 @@ router.post(
             shippingAmount:
               localOrder.shippingAmount,
 
-            totalAmount:
-              localOrder.totalAmount
+            totalAmount: localOrder.totalAmount,
+            checkoutAccessToken: checkoutToken
           }
         });
       } catch (razorpayError) {
@@ -1190,13 +1239,15 @@ router.post(
 
 router.post(
   '/verify-payment',
+  verifyRateLimit,
   async (req, res) => {
     try {
       const {
         localOrderId,
         razorpay_order_id,
         razorpay_payment_id,
-        razorpay_signature
+        razorpay_signature,
+        checkoutAccessToken
       } = req.body;
 
       if (
@@ -1204,6 +1255,7 @@ router.post(
         !razorpay_order_id ||
         !razorpay_payment_id ||
         !razorpay_signature
+        || !checkoutAccessToken
       ) {
         return res.status(400).json({
           success: false,
@@ -1224,10 +1276,7 @@ router.post(
         });
       }
 
-      const order =
-        await Order.findById(
-          localOrderId
-        );
+      const order = await Order.findById(localOrderId).select('+checkoutAccessTokenHash');
 
       if (!order) {
         return res.status(404).json({
@@ -1235,6 +1284,10 @@ router.post(
           message:
             'Order not found.'
         });
+      }
+
+      if (!checkoutTokenMatches(order.checkoutAccessTokenHash, checkoutAccessToken)) {
+        return res.status(403).json({ success: false, message: 'Checkout session is not authorized.' });
       }
 
       if (
@@ -1247,6 +1300,12 @@ router.post(
           message:
             'Razorpay order does not match our order.'
         });
+      }
+
+      const gatewayPayment = await razorpay.payments.fetch(razorpay_payment_id);
+      const expectedAmount = Math.round(Number(order.totalAmount) * 100);
+      if (gatewayPayment.order_id !== razorpay_order_id || gatewayPayment.status !== 'captured' || Number(gatewayPayment.amount) !== expectedAmount || String(gatewayPayment.currency || '').toUpperCase() !== order.currency) {
+        return res.status(409).json({ success: false, message: 'Payment is not captured or does not match this order yet. Please wait for confirmation.' });
       }
 
       if (
@@ -1378,9 +1437,7 @@ router.post(
 
       if (
         eventName ===
-          'payment.captured' ||
-        eventName ===
-          'payment.authorized'
+          'payment.captured'
       ) {
         const payment =
           event.payload
@@ -1413,6 +1470,10 @@ router.post(
             success: true,
             ignored: true
           });
+        }
+
+        if (payment.status !== 'captured' || Number(payment.amount) !== Math.round(Number(order.totalAmount) * 100) || String(payment.currency || '').toUpperCase() !== order.currency) {
+          return res.status(400).json({ success: false, message: 'Webhook payment details do not match this order.' });
         }
 
         const result =
@@ -1522,13 +1583,10 @@ router.post(
                     item.product,
                     {
                       $inc: {
-                        stock:
-                          item.quantity
+                        ...itemStockRestore(item)
                       }
                     },
-                    {
-                      session
-                    }
+                    itemStockRestoreOptions(item, session)
                   );
                 }
               }
@@ -1695,14 +1753,10 @@ router.post(
                       item.product,
                       {
                         $inc: {
-                          stock:
-                            item.quantity
+                          ...itemStockRestore(item)
                         }
                       },
-                      {
-                        new: true,
-                        session
-                      }
+                      itemStockRestoreOptions(item, session)
                     );
 
                   if (!product) {
@@ -1769,10 +1823,12 @@ router.post(
 
 router.post(
   '/cancel-order',
+  verifyRateLimit,
   async (req, res) => {
     try {
       const {
         localOrderId
+        , checkoutAccessToken
       } = req.body;
 
       if (
@@ -1788,9 +1844,7 @@ router.post(
       }
 
       const order =
-        await Order.findById(
-          localOrderId
-        );
+        await Order.findById(localOrderId).select('+checkoutAccessTokenHash');
 
       if (!order) {
         return res.status(404).json({
@@ -1798,6 +1852,10 @@ router.post(
           message:
             'Order not found.'
         });
+      }
+
+      if (!checkoutAccessToken || !checkoutTokenMatches(order.checkoutAccessTokenHash, checkoutAccessToken)) {
+        return res.status(403).json({ success: false, message: 'Checkout session is not authorized.' });
       }
 
       if (

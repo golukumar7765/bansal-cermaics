@@ -5,6 +5,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const Order = require('./models/Order');
 const siteContentRoutes = require('./routes/siteContentRoutes');
+const { rateLimit } = require('./middleware/rateLimitMiddleware');
 
 const {
   releaseExpiredReservations
@@ -19,6 +20,21 @@ dotenv.config();
 // Yahan se connectDB() hata diya gaya hai kyunki use neeche await ke sath start karenge
 
 const app = express();
+
+// Baseline HTTP hardening without adding a new deployment dependency. TLS must
+// still be terminated by the production host/reverse proxy.
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
 
 /*
  * ---------------------------------------------------------------
@@ -60,27 +76,7 @@ app.use(
   })
 );
 
-/*
- * ---------------------------------------------------------
- * RAZORPAY WEBHOOK
- * ---------------------------------------------------------
- *
- * IMPORTANT:
- *
- * This route MUST be registered before
- * express.json().
- *
- * Razorpay signature validation requires
- * the exact raw request body.
- */
-
-app.use(
-  '/api/payment/webhook',
-  express.raw({
-    type: 'application/json'
-  }),
-  require('./routes/paymentRoutes')
-);
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300, keyPrefix: 'api' }));
 
 /*
  * ---------------------------------------------------------
@@ -90,6 +86,7 @@ app.use(
 
 app.use(
   express.json({
+    limit: '100kb',
     verify: (req, res, buf) => {
       req.rawBody = Buffer.from(buf);
     }
@@ -98,13 +95,13 @@ app.use(
 
 app.use(
   express.urlencoded({
-    extended: true
+    extended: true,
+    limit: '100kb'
   })
 );
 
-// CMS updates are JSON requests.  This must be mounted after the body parsers
-// (the payment webhook above is the intentional exception because it needs the
-// unmodified raw body for signature verification).
+// The JSON parser's verify hook retains the exact raw body for Razorpay HMAC
+// validation while still parsing ordinary API requests normally.
 app.use('/api/site-content', siteContentRoutes);
 
 /*
@@ -298,6 +295,19 @@ const startExchangeRateSync =
   };
 const startServerSequence = async () => {
   try {
+    const requiredPaymentConfig = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'];
+    const missingPaymentConfig = requiredPaymentConfig.filter((key) => !String(process.env[key] || '').trim());
+    if (missingPaymentConfig.length) {
+      throw new Error(`Missing required payment configuration: ${missingPaymentConfig.join(', ')}`);
+    }
+    if (process.env.NODE_ENV === 'production') {
+      if (!String(process.env.CORS_ORIGIN || '').trim()) {
+        throw new Error('CORS_ORIGIN must be configured in production.');
+      }
+      if (String(process.env.JWT_SECRET || '').length < 32) {
+        throw new Error('JWT_SECRET must be at least 32 characters in production.');
+      }
+    }
     // 1. Pehle database connect hone ka pura intezaar karo
     await connectDB();
 
@@ -315,4 +325,8 @@ const startServerSequence = async () => {
   }
 };
 
-startServerSequence();
+if (require.main === module) {
+  startServerSequence();
+}
+
+module.exports = { app, startServerSequence };

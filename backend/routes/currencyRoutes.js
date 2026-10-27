@@ -55,50 +55,9 @@ const DEFAULT_CURRENCIES = [
     name: 'British Pound',
     symbol: '£',
     decimalPlaces: 2
-  },
-
-  {
-    code: 'AED',
-    name: 'UAE Dirham',
-    symbol: 'د.إ',
-    decimalPlaces: 2
-  },
-
-  {
-    code: 'CAD',
-    name: 'Canadian Dollar',
-    symbol: 'C$',
-    decimalPlaces: 2
-  },
-
-  {
-    code: 'AUD',
-    name: 'Australian Dollar',
-    symbol: 'A$',
-    decimalPlaces: 2
-  },
-
-  {
-    code: 'JPY',
-    name: 'Japanese Yen',
-    symbol: '¥',
-    decimalPlaces: 0
-  },
-
-  {
-    code: 'CHF',
-    name: 'Swiss Franc',
-    symbol: 'CHF',
-    decimalPlaces: 2
-  },
-
-  {
-    code: 'SGD',
-    name: 'Singapore Dollar',
-    symbol: 'S$',
-    decimalPlaces: 2
   }
 ];
+const SUPPORTED_CURRENCY_CODES = DEFAULT_CURRENCIES.map((currency) => currency.code);
 
 const ensureDefaultCurrencies =
   async () => {
@@ -171,7 +130,8 @@ router.get(
 
       const currencies =
         await Currency.find({
-          isActive: true
+          isActive: true,
+          code: { $in: SUPPORTED_CURRENCY_CODES }
         })
           .sort({
             isBase: -1,
@@ -209,6 +169,7 @@ router.get(
 
 router.post(
   '/',
+  protect,
   async (
     req,
     res
@@ -237,6 +198,10 @@ router.post(
           message:
             'Currency code is required.'
         });
+      }
+
+      if (!SUPPORTED_CURRENCY_CODES.includes(normalizedCode)) {
+        return res.status(400).json({ success: false, message: 'Only INR, USD, EUR and GBP are supported.' });
       }
 
       if (
@@ -365,6 +330,7 @@ router.post(
 
 router.put(
   '/:code',
+  protect,
   async (
     req,
     res
@@ -376,6 +342,10 @@ router.put(
         )
           .trim()
           .toUpperCase();
+
+      if (!SUPPORTED_CURRENCY_CODES.includes(code)) {
+        return res.status(400).json({ success: false, message: 'Only INR, USD, EUR and GBP are supported.' });
+      }
 
       const {
         name,
@@ -546,6 +516,7 @@ router.put(
 
 router.post(
   '/sync-rates',
+  protect,
   async (req, res) => {
     try {
       await ensureDefaultCurrencies();
@@ -555,7 +526,8 @@ router.post(
 
       const refreshed =
         await Currency.find({
-          isActive: true
+          isActive: true,
+          code: { $in: SUPPORTED_CURRENCY_CODES }
         })
           .sort({
             isBase: -1,
@@ -606,7 +578,8 @@ router.post(
     try {
       const activeCurrencies =
         await Currency.find({
-          isActive: true
+          isActive: true,
+          code: { $in: SUPPORTED_CURRENCY_CODES }
         }).lean();
 
       const products =

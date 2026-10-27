@@ -287,11 +287,11 @@ const Navbar = () => {
 
             {/* ADMIN LINKS */}
             <Link
-              to="/admin"
+              to={isAdminLoggedIn ? '/admin' : '/admin/login'}
               className="flex items-center gap-1 text-slate-600 hover:text-[#1a8b44] transition font-semibold"
             >
               <UserCheck size={13} className="text-[#1a8b44]" />
-              Admin
+              {isAdminLoggedIn ? 'Dashboard' : 'My account'}
             </Link>
 
             {isAdminLoggedIn && (

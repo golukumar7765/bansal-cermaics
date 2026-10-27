@@ -20,6 +20,23 @@ const orderItemSchema = new mongoose.Schema(
       trim: true
     },
 
+    variantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null
+    },
+
+    variantName: {
+      type: String,
+      default: '',
+      trim: true
+    },
+
+    variantAttributes: {
+      type: Map,
+      of: String,
+      default: {}
+    },
+
     imageUrl: {
       type: String,
       default: ''
@@ -332,6 +349,15 @@ const orderSchema = new mongoose.Schema(
       ],
 
       default: 'Frontend'
+    },
+
+    // A short-lived, high-entropy capability issued only to the browser that
+    // created checkout. It stops a guessed Mongo ObjectId being used to cancel
+    // or confirm somebody else's pending order.
+    checkoutAccessTokenHash: {
+      type: String,
+      default: '',
+      select: false
     },
 
     /*

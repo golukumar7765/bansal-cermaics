@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/authMiddleware');
+const { rateLimit } = require('../middleware/rateLimitMiddleware');
 const {
   createInquiry,
   getInquiries,
@@ -9,7 +10,7 @@ const {
   deleteInquiry
 } = require('../controllers/inquiryController');
 
-router.post('/', createInquiry);
+router.post('/', rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'inquiry' }), createInquiry);
 
 router.get('/', protect, getInquiries);
 

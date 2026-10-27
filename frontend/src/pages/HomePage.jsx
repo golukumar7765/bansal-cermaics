@@ -3,11 +3,13 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import { Coffee, FlaskConical, ShieldCheck, Eye, ArrowRight, Package, Search } from 'lucide-react';
 
-const slides = [
+const fallbackSlides = [
   {
     image: "https://bansalscientificceramic.com/wp-content/uploads/2025/12/1.webp",
     title: "High Alumina & Agate Labware",
-    subtitle: "Engineered for extreme thermal environments up to 1750°C. Pure, durable, and precise."
+    subtitle: "Engineered for extreme thermal environments up to 1750°C. Pure, durable, and precise.",
+    ctaLabel: 'Explore scientific products',
+    ctaUrl: '/scientific'
   }
 ];
 
@@ -21,6 +23,8 @@ const HomePage = () => {
   const [loading, setLoading] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState(localStorage.getItem('selectedCurrency') || 'INR');
   const [sortBy, setSortBy] = useState('default');
+  const [slides, setSlides] = useState(fallbackSlides);
+  const [activeSlide, setActiveSlide] = useState(0);
 
   
   const getCleanStoreType = () => {
@@ -57,12 +61,17 @@ const HomePage = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [productsResponse, categoriesResponse] = await Promise.all([
+        const [productsResponse, categoriesResponse, siteContentResponse] = await Promise.all([
           api.get('/products', { params: { currency: selectedCurrency } }),
-          api.get('/categories')
+          api.get('/categories'),
+          api.get('/site-content').catch(() => ({ data: {} }))
         ]);
         setProducts(Array.isArray(productsResponse.data) ? productsResponse.data : productsResponse.data?.data || []);
         setDbCategories(Array.isArray(categoriesResponse.data) ? categoriesResponse.data : categoriesResponse.data?.data || []);
+        const configuredSlides = (siteContentResponse.data?.data?.homeSlideshow || [])
+          .filter((slide) => slide?.isActive !== false && slide?.imageUrl)
+          .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+        if (configuredSlides.length) setSlides(configuredSlides);
       } catch (error) {
         console.error('Error loading catalog:', error);
       } finally {
@@ -71,6 +80,16 @@ const HomePage = () => {
     };
     fetchData();
   }, [selectedCurrency]);
+
+  useEffect(() => {
+    setActiveSlide(0);
+  }, [slides.length]);
+
+  useEffect(() => {
+    if (slides.length < 2) return undefined;
+    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % slides.length), 5500);
+    return () => window.clearInterval(timer);
+  }, [slides.length]);
 
   const getReferenceName = (value) => {
     if (!value) return '';
@@ -139,7 +158,7 @@ const HomePage = () => {
     if (sortBy === 'price-low') return [...result].sort((a, b) => Number(getProductPrice(a) ?? 0) - Number(getProductPrice(b) ?? 0));
     if (sortBy === 'price-high') return [...result].sort((a, b) => Number(getProductPrice(b) ?? 0) - Number(getProductPrice(a) ?? 0));
     return result;
-  }, [products, searchQuery, sortBy, selectedCurrency]);
+  }, [products, searchQuery, sortBy, getProductPrice]);
 
   const displayCategories = rootCategories.filter(c => {
     const type = String(c.storeType || 'B2B').trim().toUpperCase();
@@ -162,7 +181,7 @@ const HomePage = () => {
         <div
           className="absolute inset-0"
           style={{
-            backgroundImage: `url(${slides[0].image})`,
+            backgroundImage: `url(${slides[activeSlide]?.imageUrl || slides[activeSlide]?.image})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat'
@@ -171,6 +190,16 @@ const HomePage = () => {
 
         {/* Soft gradient at the bottom to blend with the page background */}
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#f8fafc] via-[#f8fafc]/60 to-transparent" />
+        <div className="absolute inset-0 bg-slate-950/25" />
+        <div className="absolute inset-x-0 bottom-16 sm:bottom-20 max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 text-white">
+          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-white/80">Bansal Scientific</p>
+          <h1 className="mt-2 max-w-2xl text-3xl sm:text-5xl font-black tracking-tight">{slides[activeSlide]?.title}</h1>
+          {slides[activeSlide]?.subtitle && <p className="mt-3 max-w-xl text-sm sm:text-base leading-relaxed text-white/90">{slides[activeSlide].subtitle}</p>}
+          <Link to={slides[activeSlide]?.ctaUrl || (storeType === 'B2C' ? '/lifestyle' : '/scientific')} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-extrabold text-slate-900 shadow-lg hover:bg-slate-100">
+            {slides[activeSlide]?.ctaLabel || 'Explore products'} <ArrowRight size={16} />
+          </Link>
+        </div>
+        {slides.length > 1 && <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-2">{slides.map((slide, index) => <button key={`${slide.title}-${index}`} type="button" aria-label={`Show slide ${index + 1}`} onClick={() => setActiveSlide(index)} className={`h-2.5 rounded-full transition-all ${index === activeSlide ? 'w-7 bg-white' : 'w-2.5 bg-white/60 hover:bg-white'}`} />)}</div>}
       </div>
 
       {/* =========================================================

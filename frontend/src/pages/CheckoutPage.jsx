@@ -264,7 +264,7 @@ const CheckoutPage = () => {
     };
 
     refresh();
-  }, [navigate]);
+  }, [navigate, selectedCurrency]);
 
   /*
    * The backend is the single source of truth for price.
@@ -280,7 +280,8 @@ const CheckoutPage = () => {
    */
   const getItemUnitPrice = (item) => ({
     amount: Number(
-      item.displayPrice ??
+      item.displayedUnitPrice ??
+        item.displayPrice ??
         item.price ??
         0
     ) || 0,
@@ -316,7 +317,7 @@ const CheckoutPage = () => {
             amount * Number(item.quantity || 0)
           );
         }, 0),
-      [cart, selectedCurrency]
+      [cart, getItemUnitPrice]
     );
 
   const taxRate = 0;
@@ -520,6 +521,8 @@ const CheckoutPage = () => {
             (item) => ({
               productId:
                 item._id,
+              variantId:
+                item.variantId || undefined,
               quantity:
                 Number(
                   item.quantity
@@ -627,7 +630,10 @@ const CheckoutPage = () => {
                         response.razorpay_payment_id,
 
                       razorpay_signature:
-                        response.razorpay_signature
+                        response.razorpay_signature,
+
+                      checkoutAccessToken:
+                        data.order.checkoutAccessToken
                     }
                   );
 
@@ -702,7 +708,10 @@ const CheckoutPage = () => {
         '/payment/cancel-order',
         {
           localOrderId:
-            data.order.id
+            data.order.id,
+
+          checkoutAccessToken:
+            data.order.checkoutAccessToken
         }
       );
     } catch (cancelError) {
@@ -722,22 +731,10 @@ const CheckoutPage = () => {
 );
 razorpay.on(
   'modal.close',
-  async () => {
-    try {
-      await api.post(
-        '/payment/cancel-order',
-        {
-          localOrderId:
-            data.order.id
-        }
-      );
-    } catch (error) {
-      console.error(
-        'Unable to release inventory after checkout close:',
-        error
-      );
-    }
-
+  () => {
+    // Closing the modal is not proof that the bank/payment provider failed.
+    // Keep the reservation until Razorpay's failed/captured webhook or the
+    // 15-minute expiry resolves it, so a late successful payment is never lost.
     setLoading(false);
   }
 );

@@ -1,4 +1,5 @@
 const Inquiry = require('../models/Inquiry');
+const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 
 // Nodemailer Transporter Setup
@@ -20,10 +21,15 @@ const escapeHtml = (value) => String(value ?? '')
 // 1. Create New Inquiry + Send Email Alerts (POST)
 exports.createInquiry = async (req, res) => {
   try {
-    const { productName, name, email, phone, quantity, message } = req.body;
+    const productName = String(req.body.productName || '').trim().slice(0, 300);
+    const name = String(req.body.name || '').trim().slice(0, 150);
+    const email = String(req.body.email || '').trim().toLowerCase().slice(0, 254);
+    const phone = String(req.body.phone || '').trim().slice(0, 50);
+    const message = String(req.body.message || '').trim().slice(0, 5000);
+    const quantity = req.body.quantity;
     const parsedQuantity = Number(quantity);
 
-    if (!productName || !name || !email || !phone || !Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
+    if (!productName || !name || !/^\S+@\S+\.\S+$/.test(email) || !phone || !Number.isInteger(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > 1000000) {
       return res.status(400).json({ 
         success: false, 
         message: 'Please fill all required fields.' 
@@ -79,7 +85,7 @@ exports.createInquiry = async (req, res) => {
     };
 
     // Fail-safe non-blocking email trigger
-    Promise.allSettled([
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) Promise.allSettled([
       transporter.sendMail(adminMailOptions),
       transporter.sendMail(customerMailOptions)
     ]).then(results => {
@@ -105,8 +111,8 @@ exports.createInquiry = async (req, res) => {
 // 2. Get All Inquiries (GET)
 exports.getInquiries = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const skip = (page - 1) * limit;
 
     const inquiries = await Inquiry.find()
@@ -122,20 +128,25 @@ exports.getInquiries = async (req, res) => {
       pagination: { total, page, pages: Math.ceil(total / limit) }
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Get inquiries error:', err);
+    res.status(500).json({ success: false, message: 'Unable to load inquiries.' });
   }
 };
 
 // 3. Get Single Inquiry by ID (GET)
 exports.getInquiryById = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid inquiry ID.' });
+    }
     const inquiry = await Inquiry.findById(req.params.id);
     if (!inquiry) {
       return res.status(404).json({ success: false, message: 'Inquiry not found' });
     }
     res.status(200).json({ success: true, data: inquiry });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Get inquiry error:', err);
+    res.status(500).json({ success: false, message: 'Unable to load inquiry.' });
   }
 };
 
@@ -144,7 +155,7 @@ exports.updateInquiryStatus = async (req, res) => {
   try {
     const { status } = req.body;
 
-    if (!status) {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id) || !status) {
       return res.status(400).json({ success: false, message: 'Status field is required.' });
     }
 
@@ -167,6 +178,9 @@ exports.updateInquiryStatus = async (req, res) => {
 // 5. Delete Inquiry (DELETE)
 exports.deleteInquiry = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid inquiry ID.' });
+    }
     const deletedInquiry = await Inquiry.findByIdAndDelete(req.params.id);
 
     if (!deletedInquiry) {
@@ -175,6 +189,7 @@ exports.deleteInquiry = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Inquiry deleted successfully' });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Delete inquiry error:', err);
+    res.status(500).json({ success: false, message: 'Unable to delete inquiry.' });
   }
 };

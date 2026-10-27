@@ -225,6 +225,7 @@ router.post(
         description = '',
         imageUrl = '',
         parent = null,
+        storeType = 'B2B',
         isActive = true,
         sortOrder = 0,
         specificationFields = []
@@ -279,7 +280,14 @@ router.post(
               'Nested subcategories beyond one level are not allowed.'
           });
         }
+
+        // A subcategory must always belong to the same storefront as its parent.
+        req.body.storeType = parentCategory.storeType || 'B2B';
       }
+
+      const normalizedStoreType = ['B2B', 'B2C'].includes(String(req.body.storeType || storeType).toUpperCase())
+        ? String(req.body.storeType || storeType).toUpperCase()
+        : 'B2B';
 
       const cleanName =
         String(name).trim();
@@ -320,6 +328,8 @@ router.post(
             ).trim(),
 
           parent,
+
+          storeType: normalizedStoreType,
 
           isActive:
             Boolean(isActive),
@@ -397,6 +407,7 @@ router.patch(
         description,
         imageUrl,
         parent,
+        storeType,
         isActive,
         sortOrder,
         specificationFields
@@ -465,6 +476,20 @@ router.patch(
 
         category.parent =
           parent;
+      }
+
+      if (storeType !== undefined) {
+        const normalizedStoreType = String(storeType).toUpperCase();
+        if (!['B2B', 'B2C'].includes(normalizedStoreType)) {
+          return res.status(400).json({ success: false, message: 'Invalid storefront.' });
+        }
+        if (category.parent) {
+          const parentCategory = await Category.findById(category.parent).lean();
+          if (parentCategory && parentCategory.storeType !== normalizedStoreType) {
+            return res.status(400).json({ success: false, message: 'A subcategory must use its parent storefront.' });
+          }
+        }
+        category.storeType = normalizedStoreType;
       }
 
       if (
